@@ -40,6 +40,7 @@ plugin:
 $ gh release download v0.1.0-rc31 --repo action-state-group/capsule-cli \
     -p 'capsulectl-v0.1.0-rc31-darwin-arm64' -p SHA256SUMS
 $ grep darwin-arm64 SHA256SUMS | shasum -a 256 -c
+$ mkdir -p ~/.local/bin && export PATH="$HOME/.local/bin:$PATH"
 $ install -m 0755 capsulectl-v0.1.0-rc31-darwin-arm64 ~/.local/bin/capsulectl
 $ gh release download capsulectl/v0.1.0-rc31 --repo action-state-group/evidencebook \
     -p 'capsulectl-book-v0.1.0-rc31-darwin-arm64' -p SHA256SUMS --clobber
