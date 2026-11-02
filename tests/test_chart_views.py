@@ -43,7 +43,7 @@ class Registry(unittest.TestCase):
         self.assertNotIn("classes", cal["lanes"][0])
         w = block["wording"]
         self.assertEqual((w["calendar.activity.other"], w["calendar.class.good"], w["calendar.class.bad"]),
-                         ("{n} conversations", "{n} resolved", "{n} missed"))
+                         ("{n} conversations", "{n} met all checks", "{n} did not"))
 
     def test_eu_pack_has_the_four_timeline_lanes_and_a_cofailure(self):
         block = build_block("eu-ai-act-obligations")
@@ -51,7 +51,7 @@ class Registry(unittest.TestCase):
         self.assertEqual(set(views), {"calendar", "timeline", "co-failure"})
         titles = [block["wording"][f"lane.{l['id']}.title"] for l in views["timeline"]["lanes"]]
         self.assertEqual(titles, ["Routed to a person", "Effects not confirmed", "Incident flags",
-                                  "Adjudications · close"])
+                                  "Close-out adjudications"])
         self.assertEqual({l["mark"] for l in views["timeline"]["lanes"]}, {"tick", "diamond"})
         self.assertEqual(views["co-failure"]["subject"], "statement.session")
         self.assertEqual(views["co-failure"]["count"]["chart"]["encoding"]["color"]["field"],
