@@ -48,8 +48,8 @@ capsulectl keeps its profiles under `$XDG_CONFIG_HOME/capsule` (by default
 and has no flag that moves either. So `env.sh` points `HOME`, `TMPDIR` and
 the XDG directories inside `QS`. Every file this page writes, pip's cache
 and temporary files included, then lands in `quickstart/`. The exports hold
-only in this shell: use a new terminal for the rest of the page, and close it
-when you are done. capsulectl refuses to install a plugin on a path another
+only in this shell: keep using this terminal for the rest of the page, and
+close it when you are done. capsulectl refuses to install a plugin on a path another
 user could change, so make `quickstart/` somewhere only you can write to, such
 as your home directory.
 
