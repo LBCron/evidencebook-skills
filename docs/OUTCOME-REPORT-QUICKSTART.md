@@ -27,7 +27,7 @@ it (the commands do not change) and re-check the report in step 6 says
 ## Prerequisites
 
 `go` (to build one test fixture in step 5), `python3` with `venv`, `git`, `jq`,
-`gh` or `curl` for the downloads. The only non-stdlib Python package is
+`gh` for the downloads. The only non-stdlib Python package is
 `jevals`, which step 2 installs into its own virtualenv.
 
 ## 1. Install `capsulectl` and the book plugin
@@ -138,7 +138,7 @@ $ capsulectl book cll list --profile tau2 --limit 1000 | jq '[.entries[] | selec
 
 ## 6. Judge, roll up, seal and render, in one command
 
-`scripts/report.sh` runs `run_daily.py` (nine criteria per case, 450 reports,
+`scripts/report.sh` runs `run_daily.py` (nine criteria per case,
 one judge request per conversation), `rollup_day.py`, `capsulectl book result
 build`, a fresh checkpoint, `disclose`, and `book report build`. Mock backend,
 no key, no network call:
