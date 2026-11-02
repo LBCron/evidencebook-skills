@@ -85,7 +85,7 @@ class Claims(unittest.TestCase):
         self.assertEqual([e["digest"] for e in w42["evidence"]], ["s42", "r-other-week"])
         for claim in (w41, w42):
             self.assertEqual(claim["type"], "calibration")
-            self.assertEqual(claim["contract_ref"], "contract@1")
+            self.assertEqual(claim["contract_ref"], "contract-calibration@1")
             self.assertEqual(claim["presentation"]["evidence"], claim["evidence"])
         self.assertEqual(w41["id"], "calibration-2026-W41-s41")
 

@@ -11,6 +11,11 @@ week's ratings whose `case.digest` is a report some requirement claim of the Res
 cites, and no others. A summary is cited when its week overlaps the Result's window and
 it calibrates the pin the roll-up is scoped to; a week with no summary has no claim.
 
+The claim's contract_ref is its own, `<pack>-calibration@1`: a report built against the
+pack's contract (evidencebook `report.Build` with a contract) refuses a claim that cites
+a requirement the contract does not have, and the pack contract has no calibration
+requirement, while it skips a claim of another contract_ref.
+
 The claim's verdict is `not_evaluable` with sufficiency GAP: the Evidence Contract
 defines no rule that says what agreement meets a requirement (the spec leaves it to the
 contract, and a verdict is never a ratio of the summary's counts), so the claim reports
@@ -25,7 +30,7 @@ from result_v0 import _digest_ref
 SUMMARY = "calibration-summary/v1"
 RATING = "human-rating/v1"
 CLAIM_TYPE = "calibration"
-REQUIREMENT_REF = "calibration.agreement"
+REQUIREMENT_REF = "agreement"
 
 _WEEK = re.compile(r"week:(\d{4})-W(\d{2})")
 
@@ -79,7 +84,7 @@ def add_calibration_claims(document, records, first_day, last_day):
     summary then the week's ratings of the reports the document's requirement claims cite.
     Updates aggregate buckets and coverage; returns the number of claims added."""
     cited = {e["digest"] for c in document["claims"] if c.get("type") in (None, "requirement") for e in c["evidence"]}
-    contract_ref = document["claims"][0]["contract_ref"]
+    contract_ref = document["claims"][0]["contract_ref"].rpartition("@")[0] + "-calibration@1"
     added = 0
     for summary in records["summaries"]:
         monday = week_start(summary["week"])
