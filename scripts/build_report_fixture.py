@@ -34,7 +34,10 @@ def main(argv):
     result_doc = json.loads(args.result_v0.read_text())
     claims = result_doc["claims"]
 
-    digests = sorted({c["evidence"][0]["digest"] for c in claims if c["evidence"]})
+    # A requirement claim's own report is its first citation; a calibration claim cites only
+    # judge records (a summary and ratings), every one of which the page reads.
+    digests = sorted({e["digest"] for c in claims if c["evidence"]
+                      for e in (c["evidence"] if c.get("type") == "calibration" else c["evidence"][:1])})
     print(f"fetching {len(digests)} real evaluation-report/v1 bodies via capsulectl...", file=sys.stderr)
     disclosures = {"result": {"agent_input": result_doc}}
     records = [{"capsule_id": "result",

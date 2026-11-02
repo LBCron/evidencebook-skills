@@ -54,6 +54,8 @@ for day in filter(None, os.environ.get("STUB_DAYS", "").split(",")):
                                                   {"c1": "judged"})],
                                   f"{day}T23:59:59Z", ("c1",), "stub-pack@1")
     (out / f"result-v0-{day}.json").write_text(json.dumps(doc))
+if os.environ.get("STUB_CALIBRATION"):
+    (out / "calibration-records.json").write_text(os.environ["STUB_CALIBRATION"])
 '''
 
 STUB_CAPSULECTL = r'''#!/usr/bin/env python3
@@ -130,6 +132,25 @@ class ReportShJudgedPath(unittest.TestCase):
         claim_ids = [c["id"] for c in self.sealed()["claims"]]
         self.assertTrue(claim_ids)
         self.assertTrue(all("2026-10-02" in cid for cid in claim_ids), claim_ids)
+
+    def test_the_weeks_calibration_records_are_cited_in_the_sealed_result_even_for_one_day(self):
+        records = {"summaries": [{"capsule_id": "s1", "week": "week:2026-W40", "computed_at": "2026-10-04T23:59:59Z"}],
+                   "ratings": [{"capsule_id": "r1", "week": "week:2026-W40", "case_digest": "ab" * 32},
+                               {"capsule_id": "r2", "week": "week:2026-W40", "case_digest": "ef" * 32}]}
+        proc = self.run_report("--date", "2026-10-02", env_extra={"STUB_CALIBRATION": json.dumps(records)})
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        claims = self.sealed()["claims"]
+        calibration = [c for c in claims if c.get("type") == "calibration"]
+        self.assertEqual(len(calibration), 1)
+        self.assertEqual([e["digest"] for e in calibration[0]["evidence"]], ["s1", "r1"])  # r2 rates no cited report
+        self.assertEqual(len(claims), 2)
+
+    def test_a_week_outside_the_window_is_not_cited(self):
+        records = {"summaries": [{"capsule_id": "s1", "week": "week:2026-W45", "computed_at": "2026-11-08T23:59:59Z"}],
+                   "ratings": []}
+        proc = self.run_report("--date", "2026-10-02", env_extra={"STUB_CALIBRATION": json.dumps(records)})
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        self.assertFalse([c for c in self.sealed()["claims"] if c.get("type") == "calibration"])
 
     def test_a_range_takes_every_day_in_it_and_nothing_outside(self):
         proc = self.run_report("--date", "2026-10-01", "--to", "2026-10-02",

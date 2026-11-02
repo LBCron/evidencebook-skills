@@ -18,6 +18,7 @@ so a caller (scripts/report.sh) passes only ASCII arguments and never has to
 carry the title's non-ASCII separator through the shell's locale.
 """
 import argparse
+import datetime
 import json
 import pathlib
 import sys
@@ -25,6 +26,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import yaml  # noqa: E402
 
+from calibration_claims import add_calibration_claims  # noqa: E402
 from result_v0 import merge_result_v0_documents, report_title  # noqa: E402
 from rollup import RollupError  # noqa: E402
 
@@ -36,6 +38,11 @@ def main(argv):
     ap.add_argument("--period", help="what the merged Result covers, e.g. '2026-10-01 to 2026-10-03'")
     ap.add_argument("--generated-at", required=True)
     ap.add_argument("--out", required=True, type=pathlib.Path)
+    ap.add_argument("--calibration-records", type=pathlib.Path,
+                    help="scripts/rollup_day.py's calibration-records.json: cite each week's calibration summary and "
+                         "ratings as calibration claims (with --window-from and --window-to)")
+    ap.add_argument("--window-from", help="the Result's first day, YYYY-MM-DD")
+    ap.add_argument("--window-to", help="the Result's last day, YYYY-MM-DD")
     ap.add_argument("inputs", nargs="+", type=pathlib.Path)
     args = ap.parse_args(argv)
     if (args.title is None) == (args.spec is None) or (args.spec is None) != (args.period is None):
@@ -43,14 +50,21 @@ def main(argv):
     # yaml.safe_load also reads a compiled pack's JSON.
     title = args.title if args.title is not None else report_title(yaml.safe_load(args.spec.read_text()), args.period)
 
+    if (args.calibration_records is None) != (args.window_from is None) or (args.window_from is None) != (args.window_to is None):
+        ap.error("--calibration-records goes with --window-from and --window-to, and only with them")
     docs = [json.loads(p.read_text()) for p in args.inputs]
     try:
         merged = merge_result_v0_documents(docs, title, args.generated_at)
     except RollupError as e:
         print(json.dumps({"error": str(e)}, indent=2))
         return 2
+    calibration = 0
+    if args.calibration_records is not None:
+        calibration = add_calibration_claims(merged, json.loads(args.calibration_records.read_text()),
+                                             datetime.date.fromisoformat(args.window_from),
+                                             datetime.date.fromisoformat(args.window_to))
     args.out.write_text(json.dumps(merged, indent=2))
-    summary = {"out": str(args.out), "claims": len(merged["claims"]), "inputs": len(docs)}
+    summary = {"out": str(args.out), "claims": len(merged["claims"]), "inputs": len(docs), "calibration_claims": calibration}
     print(json.dumps(summary, indent=2))
     return 0
 
