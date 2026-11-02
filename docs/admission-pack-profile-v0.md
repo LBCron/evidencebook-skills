@@ -167,6 +167,7 @@ records its count, and its denominator where one exists.
 | `stake.covers_deal` | stake | | collateral ≥ the deal, in the same band unit | no stake, a stake on a rail `trust_roots.rails` does not pin, or a different unit | |
 | `card.band_history_or_stake` | card | `k`, `step_decades`, `max_adverse_permille` | the deal is within the earned band plus `step_decades` decades, or a stake on a pinned rail covers it (§3.1) | no covering stake, and the card is not verified or carries no per-band counts | |
 | `card.open_disputes` | card | `max` | open disputes raised about the counterparty ≤ `max` (§3.3) | card not verified, or it carries no dispute tally | open / all received |
+| `card.not_stapled` | card | | the card was asked for, not stapled to the holder's own message (§3.6) | card not verified | |
 | `card.self_reported_served_periods` | card | `window`, `min_periods` | at least `min_periods` of the last `window` closed periods have a published served total (§3.4) | card not verified, or it carries no served periods | periods counted / `window` |
 | `card.referee_verdicts` | card | `window`, `min_periods` | at least `min_periods` of the last `window` closed periods have a published corroborated referee verdict count above zero (§3.5) | card not verified, or it carries no referee verdict counts | periods counted / `window` |
 | `card.witness_receipts` | card | `min` | witness receipts the verifier counted on the card's checkpoints ≥ `min` (§3.5) | card not verified, or the verifier counted none | receipts / checkpoints |
@@ -346,6 +347,20 @@ A Mesh node's answer carries no referee verdicts, so the row is not read and the
 pack's `missing` decides. Both are `card` rows, so they record or limit and
 never decide NO.
 
+### 3.6 A stapled card decides T0 only
+
+A card the holder attached to its own message, not asked for, is a staple. Its
+holder mints the staple's nonce, so a replay inside the freshness window still
+works, and above the lowest tier the asker, not the holder, should bind the
+request (Steven, 2026-11-01, D-31: a pack row, not a protocol rule).
+`card.not_stapled` reads that: it passes for a verified card the caller did not
+receive as a staple, fails for one it did, and is not read when no card
+verified. A pack puts it in a `from: T1` LIMIT row with `ask:
+{derivation: history_card/1}`: the staple still decides T0, and above it the
+decision is ASK, or LIMIT at T0 when the budget allows no ask. Whether a card
+is a staple is the caller's input, as the card's verification is; the evaluator
+checks neither.
+
 ## 4. Resolution
 
 In order:
@@ -456,6 +471,7 @@ Added after the first v0 compile (#79, #87, capsule-engine#273):
   `card.open_disputes` (§3.3), from #87.
 - **Self-reported served periods** (§3.4), from an `inference-service-history/0`
   card, for a personal agent admitting a Mesh node (capsule-engine#273).
+- **A stapled card decides T0 only** (§3.6), `card.not_stapled` (capsule-engine#277).
 
 All are additive within `admission-pack/v0`. An evaluator from before them
 refuses a pack that uses them, as an unknown predicate or field, so it fails
