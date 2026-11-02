@@ -3,10 +3,9 @@
 One binary (`capsulectl`) with its `capsulectl-book` plugin, a pack a person
 can edit and recompile, and one command (`scripts/report.sh`) that judges a
 day's recorded conversations against that pack's rubric, seals the result and
-renders it. The output, an **outcome report**, reaches you two ways over the
-same sealed bytes: a self-contained **`report.html`** you open offline in any
-browser, and a **permalink** (the bundle lives in the URL fragment and is
-recomputed in your browser; nothing server-side to trust). This page builds it
+renders it. The output, an **outcome report**, is a
+self-contained **`report.html`** you open offline in any browser; the sealed
+bytes are verified in your browser, with nothing server-side to trust. This page builds it
 from nothing, using only released binaries and one named commit of this
 repository.
 
@@ -21,10 +20,14 @@ repository.
 `capsulectl` and the plugin must be the same release: `plugin install` refuses
 a mismatch. `capsulectl v0.1.0-rc32` is out, but no plugin is built for it
 yet, so this page pins the matching rc31 pair. When a newer pair exists, use
-it (the commands do not change) and re-check the report in step 6 says
+it (the commands do not change) and re-check that step 6's report says
 `"verification":"pass"`.
 
 ## Prerequisites
+
+The commands below use `darwin-arm64` (Apple silicon). On another platform,
+replace `darwin-arm64` with `linux-amd64` or `linux-arm64` in every download
+and checksum command.
 
 `go` (to build one test fixture in step 5), `python3` with `venv`, `git`, `jq`,
 `gh` for the downloads. The only non-stdlib Python package is
@@ -88,11 +91,12 @@ byte for byte. That is the whole edit-and-rerun loop.
 
 ## 3. Set the Jev key (real runs only)
 
-Skip this step for the mock path below. For a real run against Jev, set the
-key:
+Skip this step for the mock path below. For a real run against Jev (the
+hosted judge model service this pack's rubric runs on), set the key you got
+from Jev onboarding, and never commit it:
 
 ```console
-$ export TYPESAFE_API_KEY=<your-jev-api-key>   # from Jev onboarding; never commit it
+$ export TYPESAFE_API_KEY=<your-jev-api-key>
 ```
 
 and add `--judge-backend live` to the `report.sh` call in step 6.
@@ -156,7 +160,10 @@ second run of the same day, by hand or through `report.sh`, stops with
 a fresh book.
 
 The last lines show `"verification":"pass"`, `"verdict":"VALID"` and
-`"unsupported_claims":0`. **`report.html` lands at the `--out` path**: here
+`"unsupported_claims":0`. That checks the evidence chain, not the judging:
+on the mock backend the verdicts are a deterministic hash of each request, so
+the page's met / not-met numbers are placeholders and resolve no conversation.
+Swap in a key (step 3) for real verdicts. **`report.html` lands at the `--out` path**: here
 `./report.html` inside your checkout. Open it in any browser. It is
 self-contained (the viewer runtime, including its WebCrypto verification, is
 embedded) and it **verifies offline**, with no server and no network call.
@@ -177,7 +184,7 @@ conversations, not just their digests; use it only when that is intended.
 
 ## 8. What the page shows
 
-Every term the card prints (pack, version, criteria and their wording) is read
+Every term the page prints (pack, version, criteria and their wording) is read
 from the sealed claims and reports, or marked "not stated". The pack's
 `presentation.json` block (wording of the questions and criteria) is the
 producer's text, carried outside the signed records; the sealed Result pins
