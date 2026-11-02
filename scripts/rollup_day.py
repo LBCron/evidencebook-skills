@@ -59,8 +59,10 @@ from result_v0 import (CASE_SEPARATOR, build_result_v0, build_result_v0_for_day,
 from rollup import (RollupError, all_criteria_from_clauses, all_required_met,  # noqa: E402
                     checks_from_clauses, check_verdicts, informational_from_clauses,
                     never_out_of_scope_from_clauses)
+import calibration_claims  # noqa: E402
 import day_record  # noqa: E402
 import subject_history  # noqa: E402
+from calibration_summary import URN as CALIBRATION_URN  # noqa: E402
 from run_daily import effective_tier  # noqa: E402
 
 
@@ -575,6 +577,9 @@ def main(argv):
                          headline=headline_from_result(day_doc, informational), out=str(out_path))
         day_entries.append(entry)
 
+    # The week's calibration records, for scripts/merge_results.py to cite in the window Result.
+    (args.out / "calibration-records.json").write_text(json.dumps(calibration_claims.calibration_records(
+        bodies, f"{CALIBRATION_URN}:{contract}:", expected_pin), indent=2))
     summary = {
         "cases_judged": len(by_case),
         "cases_resolved": sum(1 for c in complete if c["resolved"]),

@@ -30,7 +30,7 @@ jobs:
       # main, not yet in a capsulectl-book release. capsule-cli is the commit
       # that plugin's go.mod builds against.
       EVIDENCEBOOK_REF: 608b797ad6b9114acef72db121e4c029211c7800
-      CAPSULE_CLI_REF: 8a856b7513166d80c001529b9f0b3db22950d2f2
+      CAPSULE_CLI_REF: 759a4fb12c231e372eb285bd58f930ccc64cfee3  # v0.1.0-rc32
     steps:
       - uses: actions/checkout@v4
         with:

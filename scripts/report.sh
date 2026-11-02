@@ -240,7 +240,14 @@ else
   shopt -u nullglob
 fi
 [[ ${#DAY_RESULTS[@]} -ge 1 ]] || fail "no result-v0-*.json written for ${DATES[0]}..$LAST_DATE -- nothing to report on"
-if [[ ${#DAY_RESULTS[@]} -eq 1 ]]; then
+# The week's calibration summaries and ratings (rollup_day.py's calibration-records.json, judged path
+# only) are cited in the Result as calibration claims, which only the merge adds: so a Result that has
+# any goes through merge_results.py even for one day.
+CALIBRATION_ARGS=()
+if [[ "$MODE" == "judged" && -f "$WORK/rollup/calibration-records.json" && "$(jq '.summaries | length' "$WORK/rollup/calibration-records.json")" -gt 0 ]]; then
+  CALIBRATION_ARGS=(--calibration-records "$WORK/rollup/calibration-records.json" --window-from "${DATES[0]}" --window-to "$LAST_DATE")
+fi
+if [[ ${#DAY_RESULTS[@]} -eq 1 && ${#CALIBRATION_ARGS[@]} -eq 0 ]]; then
   RESULT_V0="${DAY_RESULTS[0]}"
 else
   step "merge_results.py: combine ${#DAY_RESULTS[@]} days into one Result v0"
@@ -248,7 +255,7 @@ else
   # merge_results.py composes the title from the spec's own name (result_v0.report_title),
   # so only ASCII crosses the shell here.
   python3 "$REPO/scripts/merge_results.py" --spec "$SPEC" --period "${DATES[0]} to $LAST_DATE" \
-    --generated-at "$GENERATED_AT" --out "$RESULT_V0" "${DAY_RESULTS[@]}"
+    --generated-at "$GENERATED_AT" --out "$RESULT_V0" ${CALIBRATION_ARGS[@]+"${CALIBRATION_ARGS[@]}"} "${DAY_RESULTS[@]}"
 fi
 
 # --title goes into the Result's own view.title before it is sealed, so the

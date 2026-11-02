@@ -390,6 +390,8 @@ def headline_from_result(document, informational=frozenset()):
     case still counts in "cases" when only informational claims remain."""
     by_case = {}
     for claim in document["claims"]:
+        if claim.get("type") == "calibration":
+            continue  # reports a judge's calibration, not a case's verdict (scripts/calibration_claims.py)
         case_id, sep, _ = claim["id"].rpartition(CASE_SEPARATOR)
         if not sep:
             raise RollupError(f"claim id {claim['id']!r} names no case (expected <case_id>{CASE_SEPARATOR}<criterion>)")
