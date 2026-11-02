@@ -1,9 +1,9 @@
 # Terms Packs quick start
 
 You have months of agent logs. This page turns them into an evidence book,
-checks them against a Terms Pack, and gives you a report page anyone can
+defines a Terms Pack, and gives you a report page anyone can
 open offline. Every step here is offline and free: no judge is called, so no
-API key is needed. For a judged report (the pinned Jev judge, run live), use
+API key is needed. For a judged report (a pinned judge, Jev, run live), use
 [Zero to a verified outcome report](OUTCOME-REPORT-QUICKSTART.md).
 
 The example is the public tau2-bench airline set: customer-support
@@ -17,45 +17,50 @@ obligations a single conversation can show).
 3. [Pick or define a pack](#3-pick-or-define-a-pack)
 4. [A report with no judge](#4-a-report-with-no-judge)
 
+Dates in the sample outputs come from the run that produced them; yours will differ.
 Every command on this page was run top to bottom on macOS (arm64) against
 capsulectl and its book plugin `v0.1.0-rc31` (GitHub releases, checksums
 verified) and the `main` of this repository at the commit this page landed on.
 
 ## 1. Install
 
-Work in an empty directory. `QS` names it for the rest of the page.
+You need `gh` (logged in to GitHub), `jq`, `git`, and `python3` with `venv`.
+`shasum` comes with macOS; on Linux use `sha256sum -c` where `shasum -a 256 -c`
+is shown below. Work in a directory whose path has no spaces. `QS` names it
+for the rest of the page.
+
+Download capsulectl and its book plugin (platform `darwin-arm64`, `linux-amd64`
+or `linux-arm64`) and check each against its release's `SHA256SUMS`. Do this
+first, in your normal shell, because the next step moves `HOME` and `gh` would
+lose your login:
+
+```sh
+umask 022 && mkdir quickstart && cd quickstart && mkdir bin book-dl
+V=v0.1.0-rc31; P=darwin-arm64
+gh release download $V --repo action-state-group/capsule-cli -p "capsulectl-$V-$P" -p SHA256SUMS
+grep "capsulectl-$V-$P" SHA256SUMS | shasum -a 256 -c
+gh release download capsulectl/$V --repo action-state-group/evidencebook -p "capsulectl-book-$V-$P" -p SHA256SUMS -D book-dl
+(cd book-dl && grep "capsulectl-book-$V-$P" SHA256SUMS | shasum -a 256 -c)
+```
 
 capsulectl keeps its profiles under `$XDG_CONFIG_HOME/capsule` (by default
 `~/.config/capsule`) and its plugins under `$HOME/.local/lib/capsulectl`,
 and has no flag that moves either. So `env.sh` points `HOME`, `TMPDIR` and
 the XDG directories inside `QS`. Every file this page writes, pip's cache
 and temporary files included, then lands in `quickstart/`. The exports hold
-only in this shell: use a new terminal for the page, and close it when you
-are done. capsulectl refuses to install a plugin on a path another user
-could change, so make `quickstart/` somewhere only you can write to, such
+only in this shell: use a new terminal for the rest of the page, and close it
+when you are done. capsulectl refuses to install a plugin on a path another
+user could change, so make `quickstart/` somewhere only you can write to, such
 as your home directory.
 
 ```sh
-umask 022 && mkdir quickstart && cd quickstart
-printf 'umask 022
-export QS=%s
-export HOME=$QS/home TMPDIR=$QS/tmp XDG_CONFIG_HOME=$QS/home/.config XDG_DATA_HOME=$QS/home/.local/share XDG_CACHE_HOME=$QS/home/.cache
-export PATH=$QS/bin:$PATH
-' "$PWD" > env.sh
-. ./env.sh && mkdir -p $TMPDIR $XDG_CONFIG_HOME $XDG_DATA_HOME $XDG_CACHE_HOME bin
-```
-
-Download capsulectl and its book plugin (platform `darwin-arm64`, `linux-amd64`
-or `linux-arm64`) and check each against its release's `SHA256SUMS`. Run the
-`gh` commands from a shell that has your GitHub login, before sourcing
-`env.sh`, which moves `HOME`:
-
-```sh
-V=v0.1.0-rc31; P=darwin-arm64
-gh release download $V --repo action-state-group/capsule-cli -p "capsulectl-$V-$P" -p SHA256SUMS
-grep "capsulectl-$V-$P" SHA256SUMS | shasum -a 256 -c
-mkdir -p book-dl && gh release download capsulectl/$V --repo action-state-group/evidencebook -p "capsulectl-book-$V-$P" -p SHA256SUMS -D book-dl
-(cd book-dl && grep "capsulectl-book-$V-$P" SHA256SUMS | shasum -a 256 -c)
+cat > env.sh <<ENV
+umask 022
+export QS=$PWD
+export HOME=\$QS/home TMPDIR=\$QS/tmp XDG_CONFIG_HOME=\$QS/home/.config XDG_DATA_HOME=\$QS/home/.local/share XDG_CACHE_HOME=\$QS/home/.cache
+export PATH=\$QS/bin:\$PATH
+ENV
+. ./env.sh && mkdir -p $TMPDIR $XDG_CONFIG_HOME $XDG_DATA_HOME $XDG_CACHE_HOME
 install -m 755 capsulectl-$V-$P bin/capsulectl
 install -m 755 book-dl/capsulectl-book-$V-$P bin/capsulectl-book
 capsulectl --version
@@ -82,7 +87,11 @@ profile stores the key paths as given, so give them in full:
 ```sh
 capsulectl key generate --output $QS/producer.seed > $QS/producer.json
 capsulectl key generate --output $QS/checkpoint.seed > $QS/checkpoint.json
-capsulectl profile create --name airline --type jsonl --jsonl-path $QS/store   --namespace tau2 --log-id airline-support --log book --operator tau2-demo   --signing-key-file $QS/producer.seed --trusted-key "$(jq -r .public_key $QS/producer.json)"   --checkpoint-signing-key-file $QS/checkpoint.seed   --checkpoint-trusted-key "$(jq -r .public_key $QS/checkpoint.json)" > /dev/null
+capsulectl profile create --name airline --type jsonl --jsonl-path $QS/store \
+  --namespace tau2 --log-id airline-support --log book --operator tau2-demo \
+  --signing-key-file $QS/producer.seed --trusted-key "$(jq -r .public_key $QS/producer.json)" \
+  --checkpoint-signing-key-file $QS/checkpoint.seed \
+  --checkpoint-trusted-key "$(jq -r .public_key $QS/checkpoint.json)" > /dev/null
 capsulectl store init --profile airline
 ```
 
@@ -123,7 +132,7 @@ head -1 $QS/logs/rows.jsonl
 
 ```
 {"conversations": 6, "rows": 43, "source": "tau2.airline.claude-3-7-sonnet-20250219", "host_time_span": ["2025-07-01T16:06:22.634243Z", "2025-09-29T16:10:18.540248Z"]}
-{"kind":"row","source":"tau2.airline.claude-3-7-sonnet-20250219","cursor":0,"id":"toolu_01HwogveKQVZBrHv53sg37Wr","at":"2025-07-01T16:06:01.095106Z","record_kind":"tool_call","task":"tau2:airline:task-0:trial-0","tool_call_id":"toolu_01HwogveKQVZBrHv53sg37Wr","tool":"get_reservation_details","status":"ok","raw_digest":"23aecdff…"}
+{"kind":"row","source":"tau2.airline.claude-3-7-sonnet-20250219","cursor":0,"id":"toolu_01HwogveKQVZBrHv53sg37Wr","at":"2025-07-01T16:06:01.095106Z","record_kind":"tool_call","task":"tau2:airline:task-0:trial-0","tool_call_id":"toolu_01HwogveKQVZBrHv53sg37Wr","tool":"get_reservation_details","status":"ok","raw_digest":"d4bd8360…"}
 ```
 
 Import the rows. Each pass commits one import record that names what it
@@ -163,7 +172,7 @@ capsulectl cll checkpoint create --profile airline | jq -c '{checkpoint, indexed
   "source_ref": {
     "type": "tau2-simulation",
     "digest_alg": "SHA-256",
-    "digest": "f405b2996f6431e316b2bde41233a0b31e14edac4a58434f47911e68bc365185"
+    "digest": "ccf596662bd99f61452229acb7691134e7f43bb937ed77f4d6d06b91a2faac9a"
   },
   "source_asserted_at": "2025-07-19T16:06:37.787845Z",
   "import_batch": "backfill:2026-10-22T03:09:27Z#1",
@@ -248,6 +257,10 @@ uses. The same pack source compiles to the same bytes every time.
 
 ## 4. A report with no judge
 
+This report runs a judge-free report spec, not the pack from section 3: a
+pack's judged rows need a judge. For a report from the pack, see
+[Zero to a verified outcome report](OUTCOME-REPORT-QUICKSTART.md).
+
 A spec with no judged rows needs no judge call. A `report-spec/v1` file
 computes every claim from the sealed records. This one counts
 conversations, cancellations and refunds, and checks that every refund
@@ -266,12 +279,12 @@ DAY=$(date -u +%F)
 scripts/report.sh --spec scripts/specs/tau2-airline-no-judge.yaml --profile airline \
   --date $DAY --out $QS/no-judge.html --work $QS/run-no-judge --capsulectl $QS/bin/capsulectl \
   > $QS/no-judge.log
-grep -A1 "book result build" $QS/no-judge.log | tail -1 | jq -c '{claims, contract_ref, checkpoint}'
+grep -A1 "book result build" $QS/no-judge.log | tail -1 | jq -c '{claims, contract_ref}'
 grep -A1 "book report build: render" $QS/no-judge.log | tail -1 | jq -c '{card, claims, verdict, verification, page}'
 ```
 
 ```
-{"claims":3,"contract_ref":"tau2-airline-no-judge@1","checkpoint":21}
+{"claims":3,"contract_ref":"tau2-airline-no-judge@1"}
 {"card":"outcome","claims":3,"verdict":"VALID","verification":"pass","page":"written"}
 ```
 

@@ -37,6 +37,8 @@ import json
 import pathlib
 import sys
 
+import rfc8785
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "backfill"))
 import backfill as bf  # noqa: E402  demo/backfill: the {case, agent_interaction} builder
 
@@ -44,7 +46,7 @@ HANDOFF_TOOLS = {"transfer_to_human_agents"}
 
 
 def jcs_digest(value) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(rfc8785.dumps(value)).hexdigest()
 
 
 def utc(ts: str) -> dt.datetime:
