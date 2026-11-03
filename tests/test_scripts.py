@@ -18,7 +18,7 @@ from capsulectl_calls import EvidenceUnavailable, committed_on, parse_rfc3339  #
 from run_daily import checked_answer  # noqa: E402
 from run_weekly import PACKET_FIELDS, blind_packet, checked_bindings, checked_ratings, citations, is_judged, raters_of_pin, week_frame  # noqa: E402
 
-REPORT = {"record_type": "evaluation-report/v1", "case_id": "tau2:airline:task-1:trial-0",
+REPORT = {"record_type": "clause-report/v1", "case_id": "tau2:airline:task-1:trial-0",
           "clause_id": "policy-followed", "verdict": "met", "rationale": "the agent refunded correctly",
           "judge_pin_digest": "ab" * 32, "stratum": "met", "source_capsule_id": "cd" * 32}
 CASE = {"case": {"task_id": "1"}, "agent_interaction": {"messages": [{"role": "user", "content": "cancel"}]}}
@@ -46,21 +46,21 @@ class BlindPacket(unittest.TestCase):
 
 class JudgedFrame(unittest.TestCase):
     def test_a_judged_report_is_in_the_frame(self):
-        self.assertTrue(is_judged({"record_type": "evaluation-report/v1", "judge_pin_digest": "ab" * 32}))
+        self.assertTrue(is_judged({"record_type": "clause-report/v1", "judge_pin_digest": "ab" * 32}))
 
     def test_a_recomputed_report_has_no_judge_pin_and_is_not(self):
-        self.assertFalse(is_judged({"record_type": "evaluation-report/v1"}))
-        self.assertFalse(is_judged({"record_type": "evaluation-report/v1", "judge_pin_digest": ""}))
+        self.assertFalse(is_judged({"record_type": "clause-report/v1"}))
+        self.assertFalse(is_judged({"record_type": "clause-report/v1", "judge_pin_digest": ""}))
 
 
 class WeekFrame(unittest.TestCase):
     DAYS = {"2026-10-19", "2026-10-20"}
     BODIES = {
-        "judged": {"record_type": "evaluation-report/v1", "period": "day:2026-10-19", "judge_pin_digest": "ab" * 32},
-        "recomputed": {"record_type": "evaluation-report/v1", "period": "day:2026-10-19"},
-        "other-week": {"record_type": "evaluation-report/v1", "period": "day:2026-09-01", "judge_pin_digest": "ab" * 32},
+        "judged": {"record_type": "clause-report/v1", "period": "day:2026-10-19", "judge_pin_digest": "ab" * 32},
+        "recomputed": {"record_type": "clause-report/v1", "period": "day:2026-10-19"},
+        "other-week": {"record_type": "clause-report/v1", "period": "day:2026-09-01", "judge_pin_digest": "ab" * 32},
         "not-a-report": {"record_type": "sample-manifest/v1", "period": "day:2026-10-19"},
-        "judged-2": {"record_type": "evaluation-report/v1", "period": "day:2026-10-20", "judge_pin_digest": "cd" * 32},
+        "judged-2": {"record_type": "clause-report/v1", "period": "day:2026-10-20", "judge_pin_digest": "cd" * 32},
     }
 
     def run_frame(self):

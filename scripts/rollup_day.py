@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Where the all-required rollup (scripts/rollup.py) meets the book: read every
-evaluation-report/v1 capsule scripts/run_daily.py sealed for this --spec's clauses,
+clause-report/v1 capsule scripts/run_daily.py sealed for this --spec's clauses,
 group by case, and for every case with every clause, compute the per-check and
 all-required verdicts plus a Result v0 document (scripts/result_v0.py) -- the input
 `capsulectl book result build` takes.
@@ -63,6 +63,7 @@ import calibration_claims  # noqa: E402
 import day_record  # noqa: E402
 import subject_history  # noqa: E402
 from calibration_summary import URN as CALIBRATION_URN  # noqa: E402
+from clause_report import is_clause_report  # noqa: E402
 from run_daily import effective_tier  # noqa: E402
 
 
@@ -77,10 +78,10 @@ def safe_filename(case_id):
 
 
 def _in_scope(body, contract, expected_pin, expected_pack):
-    """A report counts when it is an evaluation-report/v1 for this contract and,
+    """A report counts when it is an clause-report/v1 for this contract and,
     when scoping is on, under the current pin (a judged report) or the current
     pack source (a recomputed report, which carries no judge pin)."""
-    if not isinstance(body, dict) or body.get("record_type") != "evaluation-report/v1":
+    if not is_clause_report(body):
         return False
     if body.get("contract") != contract:
         return False
@@ -97,13 +98,13 @@ def _is_digest(value):
 
 
 def count_excluded(capsule_bodies, contract, expected_pin, expected_pack):
-    """How many of this contract's evaluation-report/v1 records scoping left
+    """How many of this contract's clause-report/v1 records scoping left
     out, by reason: a judged report under another judge pin, a recomputed
     report under another pack source. Reported in the summary so a rollup that
     finds nothing current says what it set aside, never a bare zero."""
     counts = {"judge_pin_mismatch": 0, "pack_source_mismatch": 0}
     for _capsule_id, body in capsule_bodies:
-        if not isinstance(body, dict) or body.get("record_type") != "evaluation-report/v1":
+        if not is_clause_report(body):
             continue
         if body.get("contract") != contract or _in_scope(body, contract, expected_pin, expected_pack):
             continue
@@ -169,7 +170,7 @@ def _period_key(body):
 
 
 def group_reports(capsule_bodies, contract, expected_pin=None, expected_pack=None, conflicts=None):
-    """Pure: case_id -> {clause_id: (verdict, capsule_id, source_capsule_id)}, over evaluation-report/v1
+    """Pure: case_id -> {clause_id: (verdict, capsule_id, source_capsule_id)}, over clause-report/v1
     bodies FOR THIS CONTRACT ONLY -- `capsule_bodies` is an iterable of
     (capsule_id, body) pairs, already read from the book by collect_reports().
 
@@ -187,7 +188,7 @@ def group_reports(capsule_bodies, contract, expected_pin=None, expected_pack=Non
 
 
 def collect_reports(capsulectl, profile, contract, expected_pin=None, expected_pack=None, conflicts=None):
-    """case_id -> {clause_id: (verdict, capsule_id, source_capsule_id)}, over every evaluation-report/v1
+    """case_id -> {clause_id: (verdict, capsule_id, source_capsule_id)}, over every clause-report/v1
     capsule the profile's book carries for this contract -- not scoped to one day: a
     case's clauses may have been judged and sealed across more than one run."""
     bodies = [(e["capsule_id"], payload(capsulectl, profile, e["capsule_id"]))
@@ -238,7 +239,7 @@ _DETERMINATION_TIERS = {"semantic_judgment": "judged", "recomputed_determination
 
 
 def report_determinations(capsule_bodies):
-    """capsule_id -> the tier its evaluation-report/v1 actually records
+    """capsule_id -> the tier its clause-report/v1 actually records
     ("judged" for a semantic_judgment, "recomputed" for a
     recomputed_determination), for every report that names one. A judged
     clause whose recompute pre-check decided a session is sealed as a
@@ -247,7 +248,7 @@ def report_determinations(capsule_bodies):
     and judged in others: the claim's tier must come from the report, not
     from the clause's static tier."""
     return {capsule_id: body["epistemic_type"] for capsule_id, body in capsule_bodies
-            if isinstance(body, dict) and body.get("record_type") == "evaluation-report/v1"
+            if is_clause_report(body)
             and body.get("epistemic_type") is not None}
 
 

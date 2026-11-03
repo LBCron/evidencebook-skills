@@ -116,7 +116,7 @@ JEV_JUDGE_BACKEND=mock python3 scripts/run_daily.py --profile tau2 --spec demo/t
 expected_reports=$((CASES * CRITERIA))
 [[ $(jq '.reports | length' "$work/daily.json") -eq "$expected_reports" ]] || fail "not nine reports per case ($CASES cases x $CRITERIA criteria = $expected_reports expected)"
 [[ $(jq -r '.close.already_closed' "$work/daily.json") == false ]] || fail "the day was already closed"
-printf '%s cases x %s criteria = %s evaluation-report/v1 capsules sealed\n' "$CASES" "$CRITERIA" "$expected_reports"
+printf '%s cases x %s criteria = %s clause-report/v1 capsules sealed\n' "$CASES" "$CRITERIA" "$expected_reports"
 
 step "daily-judge-and-close again for $day: nothing new is sealed"
 before=$("$ctl" cll list --profile tau2 --all --limit 1000 | jq '.entries | length')

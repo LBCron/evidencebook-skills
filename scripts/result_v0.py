@@ -1,4 +1,4 @@
-"""Maps this contract's per-criterion evaluation-report/v1 records
+"""Maps this contract's per-criterion clause-report/v1 records
 (scripts/run_daily.py, one conversation) into the Evidence Result v0 document
 (evidence-result-v0) `capsulectl book result build` takes as its --result input and
 validates against its vendored schema. Written to match that schema exactly.
@@ -74,7 +74,7 @@ def claim_for(criterion_id, verdict, contract_ref, tier, report_digest=None, cla
     (scripts/pack_compile.py) is reported as what it actually is, not silently
     relabelled "judged".
 
-    `report_digest` is the sealed evaluation-report/v1 capsule's digest for this
+    `report_digest` is the sealed clause-report/v1 capsule's digest for this
     criterion, when known -- cited in evidence[] but never inline. A claim with
     neither it nor `source_capsule_id` has nothing to cite and is refused with
     RollupError: Evidence Result v0 requires every claim to cite at least one
@@ -90,7 +90,7 @@ def claim_for(criterion_id, verdict, contract_ref, tier, report_digest=None, cla
     (a `judged` claim needs a code/model identity, not only the policy digest a
     `recomputed` one has) -- sealed only when `tier == "judged"`, same
     rule scripts/run_daily.py's build_report() follows for its own
-    evaluation-report/v1 record: a recomputed clause was never judged, and citing
+    clause-report/v1 record: a recomputed clause was never judged, and citing
     a judge's identity on it would misstate what produced the verdict. `rule_id`,
     `judge_pin_digest`, and `judge_pin` are written as one `x-judge-pin` object,
     `{"rule_id", "pin_digest", "pin"}` (each present only when known): evidence-result-v0
@@ -104,7 +104,7 @@ def claim_for(criterion_id, verdict, contract_ref, tier, report_digest=None, cla
     human-facing rule number a reader of the rule doc would recognize.
 
     `source_capsule_id` is that report's own citation of the case record it
-    judged (evaluation-report/v1's `source_capsule_id`, always a book capsule's
+    judged (clause-report/v1's `source_capsule_id`, always a book capsule's
     own content-addressed id, which doubles as its digest in this system) --
     appended to evidence[] after `report_digest`'s own entry (or entries), when
     both are known (in practice a report always carries both or neither), and
@@ -186,7 +186,7 @@ def build_result_v0(case_id, criterion_verdicts, report_digests, generated_at, a
                      judge_pins=None, rule_ids=None, source_capsule_ids=None, case_scoped_ids=False,
                      informational=frozenset()):
     """criterion_verdicts: dict[criterion_id -> verdict]. report_digests: dict
-    [criterion_id -> sealed evaluation-report capsule digest]. An evaluated
+    [criterion_id -> sealed clause-report capsule digest]. An evaluated
     criterion with neither a report digest nor a source capsule id is refused
     (claim_for): every claim cites at least one record.
     `source_capsule_ids`: optional dict[criterion_id -> the case record capsule

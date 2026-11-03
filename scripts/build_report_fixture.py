@@ -3,7 +3,7 @@
 build_result_v0_for_day, run against a tests/fresh_env_outcomes.sh book) into the
 unsealed evidence-bundle source shape an outcome-report renderer's test fixture is
 sealed from. It writes no invented data: every claim, verdict, rationale, case id
-and judge_pin_digest in the output is read back from the evaluation-report/v1
+and judge_pin_digest in the output is read back from the clause-report/v1
 capsules the run sealed, by capsule_id, via capsulectl_calls.payload().
 
     python3 scripts/build_report_fixture.py --profile tau2 --capsulectl CTL \\
@@ -38,7 +38,7 @@ def main(argv):
     # judge records (a summary and ratings), every one of which the page reads.
     digests = sorted({e["digest"] for c in claims if c["evidence"]
                       for e in (c["evidence"] if c.get("type") == "calibration" else c["evidence"][:1])})
-    print(f"fetching {len(digests)} real evaluation-report/v1 bodies via capsulectl...", file=sys.stderr)
+    print(f"fetching {len(digests)} real clause-report/v1 bodies via capsulectl...", file=sys.stderr)
     disclosures = {"result": {"agent_input": result_doc}}
     records = [{"capsule_id": "result",
                 "references": [{"type": "agent-action-capsule", "citation_purpose": "acted_on", "digest": d}

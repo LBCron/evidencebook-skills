@@ -38,7 +38,7 @@ class HumanRatingMatchesSchema(unittest.TestCase):
 
     def test_the_case_is_pinned_to_the_audited_report(self):
         record = self.record()
-        self.assertEqual(record["case"], {"type": "evaluation-report/v1", "digest_alg": "SHA-256", "digest": REPORT,
+        self.assertEqual(record["case"], {"type": "clause-report/v1", "digest_alg": "SHA-256", "digest": REPORT,
                                           "citation_purpose": "rated_case"})
         self.assertTrue(record["blind"])
         self.assertEqual(record["rater_ref"], "rater:expert-7")

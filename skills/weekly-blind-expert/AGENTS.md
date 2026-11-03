@@ -21,7 +21,7 @@ with a deterministic stand-in rating the packets in place of the person.
 ## Verbs this skill may call, and nothing else
 
 - `cll list` / `get` / `verify --capsule FILE` — resolve and authenticate the week's
-  judged `evaluation-report/v1` records (those whose `period` is a day of the week and that
+  judged `clause-report/v1` records (those whose `period` is a day of the week and that
   name a `judge_pin_digest`; a recomputed report has no judge to calibrate, so it is skipped
   unverified and only counted in the run's log as `frame_unjudged_skipped`) before
   sampling from them.
@@ -46,7 +46,7 @@ with a deterministic stand-in rating the packets in place of the person.
 - Present the packet to a human expert; record their rating (`met`, `not_met`,
   `not_evaluable`, or `out_of_scope` when the contract allows it) as `human-rating/v1`
   (epistemic type `human_report`, `blind: true`), whose `case` cites the
-  `evaluation-report/v1` Capsule it audits (`citation_purpose: rated_case`, the report's
+  `clause-report/v1` Capsule it audits (`citation_purpose: rated_case`, the report's
   digest), via `publish`. Each rating carries the rater as an opaque principal reference
   (`rater_ref` in the ratings file, or `--rater-ref`), never a name; the run refuses a rating
   with neither. A case counts toward agreement only when the rating and the judge's verdict are both `met` or

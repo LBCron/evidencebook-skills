@@ -36,7 +36,7 @@ on the tau2 airline book. Still pending: the `capsulectl-engine` plugin, so a co
   `not_evaluable`); this skill never overrides it and never infers a verdict for a case
   the judge could not reach. A deployment points the run at its pinned judge; tests use a
   deterministic stand-in that says it is one.
-- `publish --request FILE` — seal one `evaluation-report/v1` per case per judged clause
+- `publish --request FILE` — seal one `clause-report/v1` per case per judged clause
   (epistemic type `semantic_judgment`), citing the source case capsule and the judge pin.
 - `book close --period day --date DAY --counterparty BOOK_ID [--peer FILE --peer-checkpoint-key HEX]`
   — seal the day's Close. `capsulectl` requires a counterparty: the one the contract
