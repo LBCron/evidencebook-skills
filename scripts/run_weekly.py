@@ -75,8 +75,21 @@ def week_frame(entries, load, check, week_days):
         if not is_judged(body):
             unjudged += 1
             continue
-        check(entry["capsule_id"])
         reports.append((entry["capsule_id"], body))
+    # Re-running a day seals a second capsule when the record's content changed (the clause-report/v1
+    # rename did), so one slot can hold the same verdict twice: keep the lexicographically first
+    # capsule id, as rollup_day._group does. Different verdicts for one slot both stay.
+    first = {}
+    for capsule_id, body in reports:
+        slot = (body.get("case_id"), body.get("clause_id"), body.get("period"),
+                body.get("judge_pin_digest"), body.get("verdict"))
+        if slot not in first or capsule_id < first[slot]:
+            first[slot] = capsule_id
+    reports = [(c, b) for c, b in reports
+               if first[(b.get("case_id"), b.get("clause_id"), b.get("period"),
+                         b.get("judge_pin_digest"), b.get("verdict"))] == c]
+    for capsule_id, _body in reports:
+        check(capsule_id)
     return reports, unjudged
 
 

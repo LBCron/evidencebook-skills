@@ -67,6 +67,18 @@ class LegacyName(unittest.TestCase):
         self.assertEqual([c for c, _ in reports], ["new", "old"])
         self.assertEqual(unjudged, 0)
 
+    def test_a_rerun_of_a_pre_rename_day_does_not_double_the_weekly_frame(self):
+        slot = {"case_id": "k", "clause_id": "c.one", "period": "day:2026-11-03", "verdict": "met",
+                "judge_pin_digest": "ab" * 32}
+        bodies = {"b-new": {**slot, "record_type": CLAUSE_REPORT},
+                  "a-old": {**slot, "record_type": LEGACY_CLAUSE_REPORT},
+                  "c-other": {**slot, "record_type": CLAUSE_REPORT, "clause_id": "c.two"},
+                  "d-split": {**slot, "record_type": CLAUSE_REPORT, "verdict": "not_met"}}
+        checked = []
+        reports, _ = week_frame([{"capsule_id": k} for k in bodies], bodies.get, checked.append, {"2026-11-03"})
+        self.assertEqual(sorted(c for c, _ in reports), ["a-old", "c-other", "d-split"])
+        self.assertEqual(sorted(checked), ["a-old", "c-other", "d-split"])
+
 
 if __name__ == "__main__":
     unittest.main()
