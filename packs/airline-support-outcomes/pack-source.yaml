@@ -53,7 +53,7 @@ switches_note: >
 # per criterion, nine times per conversation. scripts/run_daily.py's judge_batch()
 # sends every judged clause of one conversation in a single judge-cmd call;
 # scripts/judges/jev_judge.py's judge_many() packs them into one backend request
-# while still sealing one evaluation-report/v1 per criterion.
+# while still sealing one clause-report/v1 per criterion.
 judge_batch: true
 judge_batch_note: >
   Always on (a cost fix, not a rubric change: the policy text was being sent once

@@ -402,7 +402,8 @@ def main(argv):
                                        pack_source_digest=spec.get("pack_source_digest"),
                                        prechecked=clause["id"] in prechecked)
                 rid = publish(ctl, profile, seal_request(
-                    # ActionID keeps its pre-rename "evaluation-report" word: a rerun must still find the sealed one.
+                    # The ActionID keeps its pre-rename "evaluation-report" word only so the identity string does not change;
+                    # nothing looks a record up by it (publish is idempotent by content, and the record_type is content).
                     f"urn:evidencebook-skills:evaluation-report:{case_id}:{clause['id']}", operator,
                     "evidencebook-skills/daily-judge-and-close", stamp, report), work, f"report-{capsule_id[:16]}")
                 reports.append(rid)

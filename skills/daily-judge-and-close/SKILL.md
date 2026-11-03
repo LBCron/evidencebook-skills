@@ -21,7 +21,9 @@ on the tau2 airline book. Still pending: the `capsulectl-engine` plugin, so a co
   the day (`appended_at`, UTC), of which the cases are those whose payload carries a
   `case`. Re-running a day seals nothing new: each report's capsule is built with a
   timestamp fixed to the day, so the same judgment is the same capsule, and `book close`
-  returns the day's existing Close (`already_closed: true`).
+  returns the day's existing Close (`already_closed: true`). A day sealed before 2026-11-03 holds
+  `evaluation-report/v1` reports; re-running it would seal a second `clause-report/v1` per clause,
+  so do not re-run such a day.
 - `get` / `verify --capsule FILE` — resolve and authenticate each case before acting on
   it (`get --raw --output FILE`, then `verify`). Never act on an unverified record.
 - `plugin ls` then `capsulectl-engine fold run --clause ID --profile NAME` (plugin, not

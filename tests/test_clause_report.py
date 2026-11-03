@@ -60,7 +60,8 @@ class LegacyName(unittest.TestCase):
     def test_the_weekly_frame_reads_both_names_and_skips_a_jf_record(self):
         bodies = {"new": {"record_type": CLAUSE_REPORT, "period": "day:2026-11-03", "judge_pin_digest": "ab" * 32},
                   "old": {**self.OLD, "period": "day:2026-11-03"},
-                  "jf": JF_SHAPED}
+                  "jf": {**JF_SHAPED, "record_type": LEGACY_CLAUSE_REPORT, "period": "day:2026-11-03",
+                         "judge_pin_digest": "cd" * 32}}
         entries = [{"capsule_id": k} for k in bodies]
         reports, unjudged = week_frame(entries, bodies.get, lambda _id: None, {"2026-11-03"})
         self.assertEqual([c for c, _ in reports], ["new", "old"])
