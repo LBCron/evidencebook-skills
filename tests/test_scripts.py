@@ -2,8 +2,12 @@
 
     python3 -m unittest discover -s tests -p 'test_*.py'
 """
+import hashlib
+import json
 import pathlib
+import shutil
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
@@ -12,7 +16,7 @@ import datetime  # noqa: E402
 
 from capsulectl_calls import EvidenceUnavailable, committed_on, parse_rfc3339  # noqa: E402
 from run_daily import checked_answer  # noqa: E402
-from run_weekly import PACKET_FIELDS, blind_packet, checked_ratings, is_judged, week_frame  # noqa: E402
+from run_weekly import PACKET_FIELDS, blind_packet, checked_bindings, checked_ratings, citations, is_judged, week_frame  # noqa: E402
 
 REPORT = {"record_type": "evaluation-report/v1", "case_id": "tau2:airline:task-1:trial-0",
           "clause_id": "policy-followed", "verdict": "met", "rationale": "the agent refunded correctly",
@@ -72,6 +76,37 @@ class WeekFrame(unittest.TestCase):
     def test_unjudged_reports_of_the_week_are_counted_not_dropped_silently(self):
         _, unjudged, _ = self.run_frame()
         self.assertEqual(unjudged, 1, "only the week's unjudged report counts, not another week's or another record type")
+
+
+class WeeklyCitations(unittest.TestCase):
+    def setUp(self):
+        self.dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.dir)
+        (self.dir / "b1.json").write_bytes(b'{"binding": 1}')
+
+    def listing(self, body):
+        path = self.dir / "bindings.json"
+        path.write_text(json.dumps(body))
+        return path
+
+    def test_no_file_cites_the_manifest_alone(self):
+        self.assertEqual(citations("m" * 64, checked_bindings(None, {"r:1"})),
+                         [{"type": "agent-action-capsule", "digest_alg": "SHA-256", "digest": "m" * 64,
+                           "citation_purpose": "acted_on"}])
+
+    def test_a_binding_is_cited_by_the_digest_of_its_octets_once(self):
+        got = checked_bindings(self.listing({"r:1": "b1.json", "r:2": "b1.json"}), {"r:1", "r:2", "r:3"})
+        self.assertEqual(got["r:1"], hashlib.sha256(b'{"binding": 1}').hexdigest())
+        cited = citations("m" * 64, got)
+        self.assertEqual([c["digest"] for c in cited], ["m" * 64, got["r:1"]])
+
+    def test_a_binding_for_someone_who_rated_nothing_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "rated nothing"):
+            checked_bindings(self.listing({"r:9": "b1.json"}), {"r:1"})
+
+    def test_a_missing_binding_file_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "not found"):
+            checked_bindings(self.listing({"r:1": "nope.json"}), {"r:1"})
 
 
 class CheckedRatings(unittest.TestCase):
