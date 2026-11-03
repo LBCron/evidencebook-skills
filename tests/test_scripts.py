@@ -16,7 +16,7 @@ import datetime  # noqa: E402
 
 from capsulectl_calls import EvidenceUnavailable, committed_on, parse_rfc3339  # noqa: E402
 from run_daily import checked_answer  # noqa: E402
-from run_weekly import PACKET_FIELDS, blind_packet, checked_bindings, checked_ratings, citations, is_judged, week_frame  # noqa: E402
+from run_weekly import PACKET_FIELDS, blind_packet, checked_bindings, checked_ratings, citations, is_judged, raters_of_pin, week_frame  # noqa: E402
 
 REPORT = {"record_type": "evaluation-report/v1", "case_id": "tau2:airline:task-1:trial-0",
           "clause_id": "policy-followed", "verdict": "met", "rationale": "the agent refunded correctly",
@@ -91,18 +91,29 @@ class WeeklyCitations(unittest.TestCase):
 
     def test_no_file_cites_the_manifest_alone(self):
         self.assertEqual(citations("m" * 64, checked_bindings(None, {"r:1"})),
-                         [{"type": "agent-action-capsule", "digest_alg": "SHA-256", "digest": "m" * 64,
-                           "citation_purpose": "acted_on"}])
+                         [{"Type": "agent-action-capsule", "DigestAlg": "SHA-256", "Digest": "m" * 64,
+                           "CitationPurpose": "acted_on"}])
 
     def test_a_binding_is_cited_by_the_digest_of_its_octets_once(self):
         got = checked_bindings(self.listing({"r:1": "b1.json", "r:2": "b1.json"}), {"r:1", "r:2", "r:3"})
         self.assertEqual(got["r:1"], hashlib.sha256(b'{"binding": 1}').hexdigest())
         cited = citations("m" * 64, got)
-        self.assertEqual([c["digest"] for c in cited], ["m" * 64, got["r:1"]])
+        self.assertEqual([c["Digest"] for c in cited], ["m" * 64, got["r:1"]])
 
     def test_a_binding_for_someone_who_rated_nothing_is_refused(self):
         with self.assertRaisesRegex(ValueError, "rated nothing"):
             checked_bindings(self.listing({"r:9": "b1.json"}), {"r:1"})
+
+    def test_a_pin_cites_only_its_own_raters(self):
+        by_case = {"a": ("ra", {"judge_pin_digest": "p1"}), "b": ("rb", {"judge_pin_digest": "p2"})}
+        rated_by = {"a": "r:1", "b": "r:2"}
+        self.assertEqual(raters_of_pin(rated_by, by_case, "p1"), {"r:1"})
+        self.assertEqual(raters_of_pin(rated_by, by_case, "p3"), set())
+
+    def test_a_binding_path_that_is_not_a_string_is_refused(self):
+        for bad in (None, 3, ["b1.json"]):
+            with self.assertRaisesRegex(ValueError, "must be a file path"):
+                checked_bindings(self.listing({"r:1": bad}), {"r:1"})
 
     def test_a_missing_binding_file_is_refused(self):
         with self.assertRaisesRegex(ValueError, "not found"):

@@ -116,6 +116,9 @@ Never a score, a rate presented as accuracy, or a rating of the agent.
   `rater`. No record shape has a field for the qualification, and
   `calibration-summary/v1` carries neither. Until they do, a report states the role and
   qualification in its text, and no sealed record backs them.
+  A rater's controller can be cited: `run_weekly.py --controller-bindings` makes the week's
+  summaries cite each rater's Controller Binding record by digest, which names the controller
+  and not the role or qualification.
 - `blind_packet()` does not apply `disclosure.suppress` yet (only `pack_compile.py`
   checks the list), so a pack with suppressed fields can't hand out today's packets as
   they are.

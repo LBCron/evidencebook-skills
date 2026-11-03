@@ -126,6 +126,8 @@ def checked_bindings(path, rater_refs):
         raise ValueError(f"controller binding for a rater who rated nothing this week: {', '.join(stray)}")
     cited = {}
     for ref in sorted(given):
+        if not isinstance(given[ref], str):
+            raise ValueError(f"controller binding for {ref!r} must be a file path")
         record = pathlib.Path(given[ref])
         if not record.is_absolute():
             record = path.parent / record
@@ -135,13 +137,21 @@ def checked_bindings(path, rater_refs):
     return cited
 
 
+def raters_of_pin(rated_by_case, by_case, pin):
+    """The rater_refs who rated a case whose judged report names `pin`: a pin's summary
+    cites the bindings of its own raters only."""
+    return {ref for case_id, ref in rated_by_case.items() if by_case[case_id][1]["judge_pin_digest"] == pin}
+
+
 def citations(manifest_id, binding_digests):
     """The `references[]` the week's calibration summaries carry: the sample manifest
     (which holds the period and the sampling policy) and each rater's Controller Binding
-    record, by digest. Nothing is added to calibration-summary/v1 itself."""
-    cited = [{"type": "agent-action-capsule", "digest_alg": "SHA-256", "digest": manifest_id,
-              "citation_purpose": "acted_on"}]
-    cited += [{"type": "controller-binding", "digest_alg": "SHA-256", "digest": d, "citation_purpose": "acted_on"}
+    record, by digest. Nothing is added to calibration-summary/v1 itself. The keys are the
+    seal request's capsule keys (capsule-cli decodes them strictly, as `Type`, `DigestAlg`,
+    `Digest`, `CitationPurpose`), not the snake_case of a record body."""
+    cited = [{"Type": "agent-action-capsule", "DigestAlg": "SHA-256", "Digest": manifest_id,
+              "CitationPurpose": "acted_on"}]
+    cited += [{"Type": "controller-binding", "DigestAlg": "SHA-256", "Digest": d, "CitationPurpose": "acted_on"}
               for d in sorted(set(binding_digests.values()))]
     return cited
 
@@ -254,6 +264,7 @@ def main(argv):
                                       bool((spec.get("switches") or {}).get("out_of_scope_verdict")),
                                       never_oos_cases, args.rater_ref)
             bindings = checked_bindings(args.controller_bindings, {r["rater_ref"] for r in ratings})
+            rater_of = {r["case_id"]: r["rater_ref"] for r in ratings}
         except ValueError as e:
             raise EvidenceUnavailable(f"ratings refused: {e}") from e
         rated = []
@@ -289,11 +300,13 @@ def main(argv):
         for record in records:
             request = seal_request(record["record_id"], operator, "evidencebook-skills/weekly-blind-expert",
                                    stamp, record)
-            request["capsule"]["references"] = citations(manifest_id, bindings)
+            own = raters_of_pin(rater_of, by_case, record["judge_pin"]["digest"])
+            request["capsule"]["References"] = citations(
+                manifest_id, {ref: d for ref, d in bindings.items() if ref in own})
             log["calibration_summaries"].append(publish(
                 ctl, profile, request, work, f"calibration-summary-{record['judge_pin']['digest'][:16]}"))
-        # The summaries cite only their pin; this action ties them to the
-        # sample they summarize (the manifest), as the blind-packets action does.
+        # This action ties the summaries to the sample they summarize (the manifest),
+        # as the blind-packets action does.
         action("calibration-summary", inputs=[("sample_manifest", manifest_id)], output_digest=json_digest(log["calibration_summaries"]))
         log["agreement"] = [{"judge_pin_digest": p["judge_pin_digest"], "k": p["agreement_count"], "n": p["rated_count"]}
                             for p in summary["pins"]]

@@ -52,8 +52,9 @@ with a deterministic stand-in rating the packets in place of the person.
   with neither. A case counts toward agreement only when the rating and the judge's verdict are both `met` or
   `not_met`: `not_evaluable` and `out_of_scope`, on either side, are in neither k nor n.
   Optionally `--controller-bindings FILE` ({rater_ref: Controller Binding record file}) makes the
-  week's `calibration-summary/v1` capsules cite each rater's binding, and the week's `sample-manifest/v1`
-  (period, sampling policy), through `references[]` by digest; the record bodies are unchanged. A rater with
+  week's `calibration-summary/v1` capsules cite the week's `sample-manifest/v1` (period, sampling policy) and the
+  binding of each rater of that summary's pin, through the capsule's `References` by digest; the record bodies are
+  unchanged. Re-running a week with a different bindings file seals different capsules, not the earlier ones again. A rater with
   no entry is cited for nothing, and a reader says that rater's book and controller are not in the bundle.
 - `calibration summarize REPORTS_FILE RATINGS_FILE` — reduce the week's ratings against
   the sampled reports they audit into **agreement as k of n per judge pin**, nothing more.
