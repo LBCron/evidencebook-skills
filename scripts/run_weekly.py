@@ -23,7 +23,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from calibration_summary import calibration_summaries, disagreement_with_verb  # noqa: E402
 from human_rating import counted_cases, human_rating_record  # noqa: E402
 from capsulectl_calls import (EvidenceUnavailable, list_capsules, payload, publish,  # noqa: E402
-                              run, seal_request, verify)
+                              run, seal_request, sha256_file, verify)
 from rollup_day import safe_filename  # noqa: E402
 from run_daily import DEFAULT_REFERENCE_FILES, judge_reference_files  # noqa: E402
 from skill_record import emit_skill_action, json_digest, skill_action_record  # noqa: E402
@@ -109,6 +109,53 @@ def checked_ratings(ratings, sampled_case_ids, allow_out_of_scope=False, never_o
     return [{**r, "rater_ref": r.get("rater_ref", rater_ref)} for r in ratings]
 
 
+def checked_bindings(path, rater_refs):
+    """The Controller Binding records the human supplies, {rater_ref: binding file}, read
+    for the raters who rated this week: the digest of each file's octets as given (AAC
+    ts/docs/controller-binding-carriage.md, not the CB section 4 binding digest). A rater
+    with no entry is cited for nothing: the page then says its book and controller are
+    not in this bundle. A name in the file that rated nothing is refused, so a typo
+    never reads as a binding for someone."""
+    if path is None:
+        return {}
+    given = json.loads(path.read_text())
+    if not isinstance(given, dict):
+        raise ValueError("controller bindings file must be a JSON object {rater_ref: binding record file}")
+    stray = sorted(set(given) - set(rater_refs))
+    if stray:
+        raise ValueError(f"controller binding for a rater who rated nothing this week: {', '.join(stray)}")
+    cited = {}
+    for ref in sorted(given):
+        if not isinstance(given[ref], str):
+            raise ValueError(f"controller binding for {ref!r} must be a file path")
+        record = pathlib.Path(given[ref])
+        if not record.is_absolute():
+            record = path.parent / record
+        if not record.is_file():
+            raise ValueError(f"controller binding file for {ref!r} not found: {record}")
+        cited[ref] = sha256_file(record)
+    return cited
+
+
+def raters_of_pin(rated_by_case, by_case, pin):
+    """The rater_refs who rated a case whose judged report names `pin`: a pin's summary
+    cites the bindings of its own raters only."""
+    return {ref for case_id, ref in rated_by_case.items() if by_case[case_id][1]["judge_pin_digest"] == pin}
+
+
+def citations(manifest_id, binding_digests):
+    """The `references[]` the week's calibration summaries carry: the sample manifest
+    (which holds the period and the sampling policy) and each rater's Controller Binding
+    record, by digest. Nothing is added to calibration-summary/v1 itself. The keys are the
+    seal request's capsule keys (capsule-cli decodes them strictly, as `Type`, `DigestAlg`,
+    `Digest`, `CitationPurpose`), not the snake_case of a record body."""
+    cited = [{"Type": "agent-action-capsule", "DigestAlg": "SHA-256", "Digest": manifest_id,
+              "CitationPurpose": "acted_on"}]
+    cited += [{"Type": "controller-binding", "DigestAlg": "SHA-256", "Digest": d, "CitationPurpose": "acted_on"}
+              for d in sorted(set(binding_digests.values()))]
+    return cited
+
+
 def sample_key(seed, capsule_id):
     s = seed.encode()
     return hashlib.sha256(len(s).to_bytes(4, "big") + s + capsule_id.encode()).hexdigest(), capsule_id
@@ -123,6 +170,9 @@ def main(argv):
     ap.add_argument("--ratings", type=pathlib.Path, help="the human's blind ratings: [{case_id, rating, rater_ref?}]")
     ap.add_argument("--rater-ref", help="an opaque principal reference for the rater (never a name), for each rating "
                     "that carries no rater_ref of its own; the run refuses a rating with neither")
+    ap.add_argument("--controller-bindings", type=pathlib.Path, help="JSON {rater_ref: Controller Binding record file}: "
+                    "the week's summaries cite each file by the SHA-256 of its octets, so a page can read the rater's "
+                    "controller from the binding; a rater with no entry is cited for nothing")
     ap.add_argument("--capsulectl", default="capsulectl")
     args = ap.parse_args(argv)
 
@@ -213,6 +263,8 @@ def main(argv):
             ratings = checked_ratings(json.loads(args.ratings.read_text()), set(by_case),
                                       bool((spec.get("switches") or {}).get("out_of_scope_verdict")),
                                       never_oos_cases, args.rater_ref)
+            bindings = checked_bindings(args.controller_bindings, {r["rater_ref"] for r in ratings})
+            rater_of = {r["case_id"]: r["rater_ref"] for r in ratings}
         except ValueError as e:
             raise EvidenceUnavailable(f"ratings refused: {e}") from e
         rated = []
@@ -246,11 +298,15 @@ def main(argv):
             raise EvidenceUnavailable(disagreement)
         log["calibration_summaries"] = []
         for record in records:
-            log["calibration_summaries"].append(publish(ctl, profile, seal_request(
-                record["record_id"], operator, "evidencebook-skills/weekly-blind-expert", stamp, record),
-                work, f"calibration-summary-{record['judge_pin']['digest'][:16]}"))
-        # The summaries cite only their pin; this action ties them to the
-        # sample they summarize (the manifest), as the blind-packets action does.
+            request = seal_request(record["record_id"], operator, "evidencebook-skills/weekly-blind-expert",
+                                   stamp, record)
+            own = raters_of_pin(rater_of, by_case, record["judge_pin"]["digest"])
+            request["capsule"]["References"] = citations(
+                manifest_id, {ref: d for ref, d in bindings.items() if ref in own})
+            log["calibration_summaries"].append(publish(
+                ctl, profile, request, work, f"calibration-summary-{record['judge_pin']['digest'][:16]}"))
+        # This action ties the summaries to the sample they summarize (the manifest),
+        # as the blind-packets action does.
         action("calibration-summary", inputs=[("sample_manifest", manifest_id)], output_digest=json_digest(log["calibration_summaries"]))
         log["agreement"] = [{"judge_pin_digest": p["judge_pin_digest"], "k": p["agreement_count"], "n": p["rated_count"]}
                             for p in summary["pins"]]
