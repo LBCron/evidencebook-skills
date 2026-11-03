@@ -24,6 +24,7 @@ from calibration_summary import calibration_summaries, disagreement_with_verb  #
 from human_rating import counted_cases, human_rating_record  # noqa: E402
 from capsulectl_calls import (EvidenceUnavailable, list_capsules, payload, publish,  # noqa: E402
                               run, seal_request, sha256_file, verify)
+from clause_report import is_clause_report  # noqa: E402
 from rollup_day import safe_filename  # noqa: E402
 from run_daily import DEFAULT_REFERENCE_FILES, judge_reference_files  # noqa: E402
 from skill_record import emit_skill_action, json_digest, skill_action_record  # noqa: E402
@@ -53,29 +54,42 @@ def blind_packet(report, case, reference_files=None):
 
 
 def is_judged(report):
-    """Whether an evaluation-report was judged, so it names the judge pin it can
+    """Whether a clause-report was judged, so it names the judge pin it can
     be calibrated against. A recomputed report has no judge_pin_digest and is
     not a judge's output: it is never in the calibration frame."""
     return bool(report.get("judge_pin_digest"))
 
 
 def week_frame(entries, load, check, week_days):
-    """The calibration frame: the week's judged evaluation-reports, each
+    """The calibration frame: the week's judged clause-reports, each
     authenticated with `check` before it counts, and how many of the week's
     reports were skipped because no judge wrote them (is_judged). Skipped
     reports are not verified."""
     reports, unjudged = [], 0
     for entry in entries:
         body = load(entry["capsule_id"])
-        if not (isinstance(body, dict) and body.get("record_type") == "evaluation-report/v1"):
+        if not is_clause_report(body):
             continue
         if body.get("period", "").removeprefix("day:") not in week_days:
             continue
         if not is_judged(body):
             unjudged += 1
             continue
-        check(entry["capsule_id"])
         reports.append((entry["capsule_id"], body))
+    # Re-running a day seals a second capsule when the record's content changed (the clause-report/v1
+    # rename did), so one slot can hold the same verdict twice: keep the lexicographically first
+    # capsule id, as rollup_day._group does. Different verdicts for one slot both stay.
+    first = {}
+    for capsule_id, body in reports:
+        slot = (body.get("case_id"), body.get("clause_id"), body.get("period"),
+                body.get("judge_pin_digest"), body.get("verdict"))
+        if slot not in first or capsule_id < first[slot]:
+            first[slot] = capsule_id
+    reports = [(c, b) for c, b in reports
+               if first[(b.get("case_id"), b.get("clause_id"), b.get("period"),
+                         b.get("judge_pin_digest"), b.get("verdict"))] == c]
+    for capsule_id, _body in reports:
+        check(capsule_id)
     return reports, unjudged
 
 

@@ -115,7 +115,7 @@ with no model; steps 2 to 5 are the same.
    [`../daily-judge-and-close/SKILL.md`](../daily-judge-and-close/SKILL.md) does
    (`scripts/run_daily.py` for the cron packs, `scripts/judge_bundle.py` for
    `everyday-rules`). Days already judged are not re-judged. The outcome is an Evidence
-   Result v0 document whose claims cite the sealed `evaluation-report/v1` records.
+   Result v0 document whose claims cite the sealed `clause-report/v1` records.
 2. **Seal the Result.**
    `capsulectl book result build --profile NAME --result RESULT.json --contract <pack_id>@<version> --out RESULT.sealed.json --capsule-out RESULT.capsule.json`.
    It refuses a Result whose headline numbers do not recompute from its claims, or that

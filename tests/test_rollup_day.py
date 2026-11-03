@@ -60,7 +60,7 @@ class GroupReports(unittest.TestCase):
     CONTRACT = "tau2-airline-outcomes/v1"
 
     def _report(self, case_id, clause_id, verdict, contract=None, judge_pin_digest=None, source_capsule_id=None):
-        return {"record_type": "evaluation-report/v1", "case_id": case_id,
+        return {"record_type": "clause-report/v1", "case_id": case_id,
                 "clause_id": clause_id, "verdict": verdict, "contract": contract or self.CONTRACT,
                 "judge_pin_digest": judge_pin_digest, "source_capsule_id": source_capsule_id}
 
@@ -154,7 +154,7 @@ class GroupReports(unittest.TestCase):
         # A recomputed report carries no judge pin; it counts only under the
         # current pack source, never silently from an earlier compile.
         clause = "policy_compliance.within_fare_rules"
-        current = {"record_type": "evaluation-report/v1", "case_id": "case-a", "clause_id": clause,
+        current = {"record_type": "clause-report/v1", "case_id": "case-a", "clause_id": clause,
                    "verdict": "met", "contract": self.CONTRACT, "pack_source_digest": "pack-now"}
         old = dict(current, verdict="not_met", case_id="case-b", pack_source_digest="pack-then")
         grouped = group_reports([("c1", current), ("c2", old)], self.CONTRACT, expected_pin="pin",
@@ -162,7 +162,7 @@ class GroupReports(unittest.TestCase):
         self.assertEqual(sorted(grouped), ["case-a"])
 
     def test_a_malformed_report_is_a_clean_refusal(self):
-        body = {"record_type": "evaluation-report/v1", "contract": self.CONTRACT, "verdict": "met"}
+        body = {"record_type": "clause-report/v1", "contract": self.CONTRACT, "verdict": "met"}
         with self.assertRaisesRegex(RollupError, "report cap1 is malformed"):
             group_reports([("cap1", body)], self.CONTRACT)
 
@@ -176,7 +176,7 @@ class GroupReportsByDay(unittest.TestCase):
     CONTRACT = "tau2-airline-outcomes/v1"
 
     def _report(self, case_id, clause_id, verdict, period, contract=None, source_capsule_id=None):
-        return {"record_type": "evaluation-report/v1", "case_id": case_id,
+        return {"record_type": "clause-report/v1", "case_id": case_id,
                 "clause_id": clause_id, "verdict": verdict, "period": period,
                 "contract": contract or self.CONTRACT, "source_capsule_id": source_capsule_id}
 
@@ -533,9 +533,9 @@ class PerSessionTier(unittest.TestCase):
     CRIT = "policy_compliance.within_fare_rules"
 
     def test_report_determinations_maps_each_capsule(self):
-        bodies = [("a", {"record_type": "evaluation-report/v1", "epistemic_type": "recomputed_determination"}),
-                  ("b", {"record_type": "evaluation-report/v1", "epistemic_type": "semantic_judgment"}),
-                  ("c", {"record_type": "evaluation-report/v1"}),
+        bodies = [("a", {"record_type": "clause-report/v1", "epistemic_type": "recomputed_determination"}),
+                  ("b", {"record_type": "clause-report/v1", "epistemic_type": "semantic_judgment"}),
+                  ("c", {"record_type": "clause-report/v1"}),
                   ("d", {"record_type": "something-else", "epistemic_type": "semantic_judgment"})]
         self.assertEqual(report_determinations(bodies),
                          {"a": "recomputed_determination", "b": "semantic_judgment"})
@@ -638,7 +638,7 @@ class ConflictingCasesAreNeverDroppedSilently(unittest.TestCase):
     GENERATED_AT = "2026-09-24T23:59:59Z"
 
     def _bodies(self, case_id, period, verdicts):
-        return [(f"{case_id}-{period}-{i}", {"record_type": "evaluation-report/v1", "contract": self.CONTRACT,
+        return [(f"{case_id}-{period}-{i}", {"record_type": "clause-report/v1", "contract": self.CONTRACT,
                                                "case_id": case_id, "clause_id": c, "verdict": v,
                                                "period": period, "judge_pin_digest": "pin"})
                 for i, (c, v) in enumerate(verdicts.items())]
@@ -688,10 +688,10 @@ class CountExcludedWithoutAPin(unittest.TestCase):
     def test_a_contract_with_no_pin_counts_only_pack_source_mismatches(self):
         # No judge model id, no pin: a judged report is in scope whatever its
         # pin, so only a recomputed report from another pack source is excluded.
-        bodies = [("a", {"record_type": "evaluation-report/v1", "contract": "c", "judge_pin_digest": "1" * 64}),
-                  ("b", {"record_type": "evaluation-report/v1", "contract": "c", "pack_source_digest": "2" * 64}),
-                  ("c", {"record_type": "evaluation-report/v1", "contract": "c", "pack_source_digest": "3" * 64}),
-                  ("d", {"record_type": "evaluation-report/v1", "contract": "other", "pack_source_digest": "2" * 64})]
+        bodies = [("a", {"record_type": "clause-report/v1", "contract": "c", "judge_pin_digest": "1" * 64}),
+                  ("b", {"record_type": "clause-report/v1", "contract": "c", "pack_source_digest": "2" * 64}),
+                  ("c", {"record_type": "clause-report/v1", "contract": "c", "pack_source_digest": "3" * 64}),
+                  ("d", {"record_type": "clause-report/v1", "contract": "other", "pack_source_digest": "2" * 64})]
         self.assertEqual(rollup_day.count_excluded(bodies, "c", None, "3" * 64),
                          {"judge_pin_mismatch": 0, "pack_source_mismatch": 1})
 
@@ -713,14 +713,14 @@ class ScopingExclusionsAreCounted(unittest.TestCase):
         pin_digest = hashlib.sha256(json.dumps(pin, sort_keys=True).encode()).hexdigest()
         book = []
         for i, clause in enumerate(self.spec["clauses"]):
-            body = {"record_type": "evaluation-report/v1", "contract": self.spec["contract"],
+            body = {"record_type": "clause-report/v1", "contract": self.spec["contract"],
                     "case_id": "case-a", "clause_id": clause["id"], "verdict": "met",
                     "period": "day:2026-09-23", "pack_source_digest": self.spec["pack_source_digest"],
                     "judge_pin_digest": pin_digest}
             book.append({"capsule_id": f"{i:064x}", "appended_at": "2026-09-24T00:00:00Z", "payload": body})
         # one recomputed report (no pin) from an earlier compile of the pack
         book.append({"capsule_id": "f" * 64, "appended_at": "2026-09-24T00:00:00Z",
-                     "payload": {"record_type": "evaluation-report/v1", "contract": self.spec["contract"],
+                     "payload": {"record_type": "clause-report/v1", "contract": self.spec["contract"],
                                  "case_id": "case-b", "clause_id": self.spec["clauses"][1]["id"],
                                  "verdict": "met", "period": "day:2026-09-23",
                                  "pack_source_digest": "0" * 64}})

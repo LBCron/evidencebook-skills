@@ -8,7 +8,7 @@ capsule ids of the records it was computed from, so the report and the
 verifier can both recompute it from the same book.
 
 This is scripts/rollup_day.py's sibling, not its replacement: where
-rollup_day.py turns a day's JUDGED evaluation-report/v1 capsules (one Jev
+rollup_day.py turns a day's JUDGED clause-report/v1 capsules (one Jev
 verdict per clause per case) into a Result v0 document, this module turns the
 SEALED RECORDS THEMSELVES -- no judge in the loop at all -- into the same
 Result v0 shape, by calling the exact same scripts/result_v0.py functions

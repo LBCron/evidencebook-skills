@@ -23,7 +23,7 @@ URN = "urn:evidencebook-skills:calibration-summary"
 
 def calibration_summaries(selected, rated, contract, week_key, computed_at):
     """One calibration-summary/v1 body per judge pin in `selected` (a list of
-    (report capsule id, evaluation-report body)), from `rated` (a list of
+    (report capsule id, clause-report body)), from `rated` (a list of
     {"case_id", "rating"}), in pin order. A pin's clauses are those of its
     drawn reports, so a clause drawn but not rated reports agreement 0 of 0."""
     rating_of = {r["case_id"]: r["rating"] for r in rated if r["case_id"] in counted_cases(selected, rated)}

@@ -66,6 +66,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from clause_report import CLAUSE_REPORT  # noqa: E402
 from capsulectl_calls import (EvidenceUnavailable, case_id_of, committed_on, list_capsules,  # noqa: E402
                               payload, publish, run, seal_request, verify)
 from judge_pin import DEFAULT_JUDGE_TIMEOUT, describe_judge, pin_input as build_pin_input  # noqa: E402
@@ -282,7 +283,7 @@ def case_answers(body, spec, switches, root, judge_cmd, judge_model_id, allow_ou
 
 def build_report(clause, switches, answer, contract, case_id, capsule_id, pin, day,
                  contract_ref=None, judge_pin=None, pack_source_digest=None, prechecked=False):
-    """The evaluation-report/v1 body for one clause -- pure, no I/O. `judge_pin_digest`
+    """The clause-report/v1 body for one clause -- pure, no I/O. `judge_pin_digest`
     is sealed only for a tier judged clause: a recomputed one was never judged, and
     citing the pinned judge's digest on it would misstate which model (none) actually
     produced the verdict, exactly the misattribution this module's own docstring warns
@@ -305,7 +306,7 @@ def build_report(clause, switches, answer, contract, case_id, capsule_id, pin, d
     determination citing the pre-check, with no judge pin -- no model produced
     it."""
     tier = effective_tier(clause, switches)
-    report = {"record_type": "evaluation-report/v1",
+    report = {"record_type": CLAUSE_REPORT,
               "contract": contract, "clause_id": clause["id"], "case_id": case_id,
               "source_capsule_id": capsule_id,
               "verdict": answer["verdict"], "rationale": answer.get("rationale", ""),
@@ -401,6 +402,8 @@ def main(argv):
                                        pack_source_digest=spec.get("pack_source_digest"),
                                        prechecked=clause["id"] in prechecked)
                 rid = publish(ctl, profile, seal_request(
+                    # The ActionID keeps its pre-rename "evaluation-report" word only so the identity string does not change;
+                    # nothing looks a record up by it (publish is idempotent by content, and the record_type is content).
                     f"urn:evidencebook-skills:evaluation-report:{case_id}:{clause['id']}", operator,
                     "evidencebook-skills/daily-judge-and-close", stamp, report), work, f"report-{capsule_id[:16]}")
                 reports.append(rid)

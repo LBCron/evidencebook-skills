@@ -21,7 +21,10 @@ on the tau2 airline book. Still pending: the `capsulectl-engine` plugin, so a co
   the day (`appended_at`, UTC), of which the cases are those whose payload carries a
   `case`. Re-running a day seals nothing new: each report's capsule is built with a
   timestamp fixed to the day, so the same judgment is the same capsule, and `book close`
-  returns the day's existing Close (`already_closed: true`).
+  returns the day's existing Close (`already_closed: true`). A day sealed before 2026-11-03 holds
+  `evaluation-report/v1` reports; re-running it (`report.sh` does, over its range) seals a second
+  `clause-report/v1` per clause. Readers keep the lexicographically first capsule id per slot
+  (`rollup_day`, and the weekly frame).
 - `get` / `verify --capsule FILE` — resolve and authenticate each case before acting on
   it (`get --raw --output FILE`, then `verify`). Never act on an unverified record.
 - `plugin ls` then `capsulectl-engine fold run --clause ID --profile NAME` (plugin, not
@@ -36,7 +39,7 @@ on the tau2 airline book. Still pending: the `capsulectl-engine` plugin, so a co
   `not_evaluable`); this skill never overrides it and never infers a verdict for a case
   the judge could not reach. A deployment points the run at its pinned judge; tests use a
   deterministic stand-in that says it is one.
-- `publish --request FILE` — seal one `evaluation-report/v1` per case per judged clause
+- `publish --request FILE` — seal one `clause-report/v1` per case per judged clause
   (epistemic type `semantic_judgment`), citing the source case capsule and the judge pin.
 - `book close --period day --date DAY --counterparty BOOK_ID [--peer FILE --peer-checkpoint-key HEX]`
   — seal the day's Close. `capsulectl` requires a counterparty: the one the contract

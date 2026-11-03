@@ -21,7 +21,7 @@ gap is never filled from another stratum. A report that states k of n also state
 
 ## Draw
 
-1. Fix the frame: every judged `evaluation-report/v1` the report covers (one that names a
+1. Fix the frame: every judged `clause-report/v1` the report covers (one that names a
    `judge_pin_digest`; a recomputed report has no judge to calibrate and is skipped, counted in
    the run's log), each verified before it counts.
 2. Draw per stratum by the rule in `calibration-sampling-spec.md`: order by the hex of

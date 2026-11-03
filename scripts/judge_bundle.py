@@ -143,7 +143,7 @@ RESULT.judge.json):
                           "out_of_scope": [...], "allow_out_of_scope": true}}
 
 spec_version names the format and its version in one value, as this repo's
-other formats do (presentation/v1, evaluation-report/v1); a reader refuses one
+other formats do (presentation/v1, clause-report/v1); a reader refuses one
 it does not know. The sidecar cites its Result by digest, never by path: a
 sidecar whose result_sha256 does not match the Result in hand is not that
 Result's sidecar.
