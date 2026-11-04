@@ -364,6 +364,14 @@ def cmd_compare(args):
         "summary": lines})
 
 
+def rules_checker_pin(source, compiled_path, digest):
+    """The pin file `capsulectl profile update --rules-checker` reads. `kind` is the
+    pack's own scope.kind, never assumed: capsulectl shares a pin with the
+    counterparty only when it states "deal"."""
+    return {"command": [str(pathlib.Path(__file__).resolve().parent / "terms-checker"), str(compiled_path.resolve())],
+            "timeout": "10s", "definition_digest": digest, "kind": source["scope"]["kind"]}
+
+
 def cmd_publish(args):
     source = load_pack(args.src)
     ws = workspace_of(args)
@@ -377,8 +385,7 @@ def cmd_publish(args):
     shutil.copyfile(args.src, dest / "pack-source.yaml")
     # The pin file `capsulectl profile update --rules-checker` reads (the executable must
     # also sit under a trusted plugin root): the checker, the compiled pack it reads, the digest.
-    pin = {"command": [str(pathlib.Path(__file__).resolve().parent / "terms-checker"), str((dest / "compiled.json").resolve())],
-           "timeout": "10s", "definition_digest": compiled["definition_digest"]}
+    pin = rules_checker_pin(source, dest / "compiled.json", compiled["definition_digest"])
     (dest / "rules-checker.json").write_text(json.dumps(pin, indent=2) + "\n")
     return out({"pack_id": source["pack_id"], "pack_version": source["pack_version"],
                 "definition_digest": compiled["definition_digest"], "published": str(dest),
