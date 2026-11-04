@@ -316,6 +316,9 @@ class RulesChecker(unittest.TestCase):
     def test_the_price_row_passes_on_the_offered_price_and_fails_on_a_changed_one(self):
         ok = self.run_checker(check_input("deal-a", 150, 150))
         self.assertEqual((ok["verdict"], ok["definition_digest"]), ("allow", self.pin["definition_digest"]))
+        # capsulectl's sealer reads name@version as an email address and refuses the answer
+        self.assertEqual(ok["ruleset_id"], "sticker-sale/0.1.0")
+        self.assertNotIn("@", ok["ruleset_id"])
         by = {f["id"]: f["verdict"] for f in ok["findings"]}
         self.assertEqual(by, {"paid_before_delivered": "not_applicable", "delivered_within_days": "not_applicable",
                               "price_as_offered": "pass"})
