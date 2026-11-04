@@ -7,7 +7,10 @@ The shapes are evidencebook-deal's (testdata/studio/README.md, PR 142): `capsule
 with `at` (or `x-deal-v0.at`), `type` and `body`. Per deal:
 
     offered_price   the last action-record/v0 {action: "offer"} amount_minor
-    accepted_price  the action-record/v0 {action: "commit"} amount_minor; on a
+    accepted_price  the action-record/v0 {action: "commit"} amount_minor, or the
+                    price of a detail_change record after the commit that moved the
+                    price (x-deal-v0.record_type, body.changed has "price",
+                    body.terms.price_minor): what the seller charged; on a
                     deal with no commit record, the action-outcome/v0
                     unchecked_action's attempted commit amount_minor (the price
                     the seller tried to charge, so a changed price is a miss
@@ -35,6 +38,10 @@ def _at(rec):
     return at
 
 
+def _minor(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
 def _amount(body):
     v = body.get("amount_minor") if isinstance(body, dict) else None
     return v if isinstance(v, int) and not isinstance(v, bool) else None
@@ -46,16 +53,26 @@ def sale_from_records(deal_id, records):
         raise StoreError(f"deal {deal_id}: the export is not a JSON array of records")
     sale = {"deal_id": deal_id}
     attempted = None
+    changed_price = None
     for rec in records:
         if not isinstance(rec, dict):
             continue
         body = rec.get("body") if isinstance(rec.get("body"), dict) else {}
         kind = rec.get("type")
-        if kind == "action-record/v0":
+        x = rec.get("x-deal-v0") if isinstance(rec.get("x-deal-v0"), dict) else {}
+        if x.get("record_type") == "detail_change":
+            # The seller moved a term after the commit: the price actually charged.
+            terms = body.get("terms") if isinstance(body.get("terms"), dict) else {}
+            changed = body.get("changed")
+            if "commit_seen" in sale and isinstance(changed, list) and "price" in changed and _minor(terms.get("price_minor")) is not None:
+                changed_price = terms["price_minor"]
+        elif kind == "action-record/v0":
             if body.get("action") == "offer" and _amount(body) is not None:
                 sale["offered_price"] = _amount(body)
             elif body.get("action") == "commit" and _amount(body) is not None:
                 sale["accepted_price"] = _amount(body)
+                sale["commit_seen"] = True
+                changed_price = None  # a later commit supersedes an earlier change
         elif kind == "action-outcome/v0" and body.get("status") == "unchecked_action":
             att = body.get("attempted")
             if isinstance(att, dict) and att.get("action") == "commit" and _amount(att) is not None:
@@ -65,7 +82,10 @@ def sale_from_records(deal_id, records):
                 sale["paid_at"] = _at(rec)
             elif body.get("source") == "seller_handoff" and _at(rec):
                 sale["delivered_at"] = _at(rec)
-    if "accepted_price" not in sale and attempted is not None:
+    sale.pop("commit_seen", None)
+    if changed_price is not None:
+        sale["accepted_price"] = changed_price
+    elif "accepted_price" not in sale and attempted is not None:
         sale["accepted_price"] = attempted
     return sale
 

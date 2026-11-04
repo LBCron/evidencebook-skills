@@ -245,6 +245,28 @@ class DealStore(unittest.TestCase):
             misses = {c["id"] for c in result["claims"] if c["verdict"] == "not_met"}
             self.assertEqual(misses, {"deal-07::price_as_offered"})
 
+    def test_a_price_change_after_the_commit_is_the_miss(self):
+        import deal_store
+        records = seller_export(7, 150, 150)
+        records.insert(-1, {"body": {"changed": ["price"], "source": "seller_message", "terms": {"price_minor": 175}},
+                            "x-deal-v0": {"record_type": "detail_change", "at": "2026-11-04T10:00:03Z", "seq": 9}})
+        sale = deal_store.sale_from_records("deal-07", records)
+        self.assertEqual((sale["offered_price"], sale["accepted_price"]), (150, 175))
+        self.assertNotIn("commit_seen", sale)
+        for changed in (True, "not_price"):
+            bad = seller_export(9, 150, 150)
+            bad.insert(-1, {"body": {"changed": changed, "terms": {"price_minor": 175}},
+                            "x-deal-v0": {"record_type": "detail_change"}})
+            self.assertEqual(deal_store.sale_from_records("d", bad)["accepted_price"], 150)
+        re_commit = seller_export(10, 150, 150)
+        re_commit.insert(-1, {"body": {"changed": ["price"], "terms": {"price_minor": 175}},
+                              "x-deal-v0": {"record_type": "detail_change"}})
+        re_commit.insert(-1, {"type": "action-record/v0", "body": {"action": "commit", "amount_minor": 200}})
+        self.assertEqual(deal_store.sale_from_records("d", re_commit)["accepted_price"], 200)
+        other = seller_export(8, 150, 150)
+        other.insert(-1, {"body": {"changed": ["handover"]}, "x-deal-v0": {"record_type": "detail_change"}})
+        self.assertEqual(deal_store.sale_from_records("deal-08", other)["accepted_price"], 150)
+
     def test_a_deal_without_the_facts_is_not_evaluable_and_empty_exports_are_refused(self):
         import deal_store
         sale = deal_store.sale_from_records("d", [{"type": "baseline", "body": {}}])
