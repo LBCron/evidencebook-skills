@@ -51,6 +51,12 @@ way.
   `compiled.json` alone under `packs/inference-deals/compiled/`, and
   `scripts/report.sh` runs `scripts/evaluators/inference_deals.py` over the
   node's book for a window of whole closed periods. No model runs.
+  `sticker-sale` is a deal terms pack (`scope.kind: deal`, `scripts/deal_pack.py`):
+  a seller's three sticker-sale rows, all recomputed by
+  `scripts/evaluators/sticker_deal.py` from each sale's own records. Terms Pack
+  Studio's `scripts/studio/terms` (`lint`, `test`, `run --dry-run`, `verify`,
+  `compare`, `publish`) and the [`terms-pack-author`](skills/terms-pack-author/SKILL.md)
+  skill author, rehearse and publish it; `run` writes only into the workspace it is given.
   `admission-baseline` is an admission pack (`scope.kind: admission`,
   [`docs/admission-pack-profile-v0.md`](docs/admission-pack-profile-v0.md)):
   the policy a relying party runs before an act, over what it received about a

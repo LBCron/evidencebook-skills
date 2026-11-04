@@ -460,7 +460,7 @@ class Refusals(unittest.TestCase):
 
     def test_an_unknown_scope_kind_still_names_admission(self):
         issues = pack_compile.validate_source(load(baseline_text().replace("kind: admission", "kind: admit")))
-        self.assertIn("scope.kind 'admit' must be one of ['live', 'after_the_fact', 'admission']", issues)
+        self.assertIn("scope.kind 'admit' must be one of ['live', 'after_the_fact', 'admission', 'deal']", issues)
 
 
 class GoNoPack(unittest.TestCase):

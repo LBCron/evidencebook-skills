@@ -71,6 +71,7 @@ import sys
 import yaml
 
 import admission_pack
+import deal_pack
 import chart_views
 import live_pack
 
@@ -378,6 +379,8 @@ def validate_source(source, base_dir=None):
         return live_pack.validate_live(source, base_dir)
     if admission_pack.is_admission(source):
         return admission_pack.validate_admission(source) or admission_pack.compile_issues(source)
+    if deal_pack.is_deal(source):
+        return deal_pack.validate_deal(source)
 
     def require_str(key):
         v = source.get(key)
@@ -1093,6 +1096,21 @@ def main(argv):
             "out": out_rel,
             "files": [f"{out_rel}/contract.json", f"{out_rel}/pack-definition.json"],
             "definition_digest": hashlib.sha256(admission_pack.compiled_bytes(source)).hexdigest(),
+        }, indent=2))
+        return 0
+
+    if deal_pack.is_deal(source):
+        out_abs.mkdir(parents=True, exist_ok=True)
+        compiled = deal_pack.compiled(source)
+        (out_abs / "compiled.json").write_text(json.dumps(compiled, indent=2) + "\n")
+        print(json.dumps({
+            "valid": True,
+            "pack_id": source["pack_id"],
+            "pack_version": source["pack_version"],
+            "scope": "deal",
+            "out": out_rel,
+            "files": [f"{out_rel}/compiled.json"],
+            "definition_digest": compiled["definition_digest"],
         }, indent=2))
         return 0
 

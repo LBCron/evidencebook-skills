@@ -76,8 +76,9 @@ import re
 import rfc8785
 import yaml
 
-# `admission` (an admission pack, #51) is validated by scripts/admission_pack.py.
-SCOPE_KINDS = ("live", "after_the_fact", "admission")
+# `admission` (an admission pack, #51) is validated by scripts/admission_pack.py,
+# `deal` (a seller's deal terms, #117) by scripts/deal_pack.py.
+SCOPE_KINDS = ("live", "after_the_fact", "admission", "deal")
 DEFAULT_SCOPE_KIND = "after_the_fact"
 
 # capsule-engine's closed sets (packs/schema.py, compiler/vocabulary.py,
