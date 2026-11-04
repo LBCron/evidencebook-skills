@@ -187,11 +187,9 @@ class StickerDeal(unittest.TestCase):
         self.assertEqual(listing(outside), [])
 
     def test_the_shipped_compiled_pack_is_current(self):
-        out = subprocess.run([sys.executable, str(ROOT / "scripts" / "pack_compile.py"), "compile", str(SOURCE),
-                              "--out", "packs/sticker-sale/compiled"], capture_output=True, text=True, cwd=ROOT)
-        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         committed = json.loads((ROOT / "packs" / "sticker-sale" / "compiled" / "compiled.json").read_text())
-        self.assertEqual(committed["definition_digest"], json.loads(out.stdout)["definition_digest"])
+        import deal_pack
+        self.assertEqual(committed, deal_pack.compiled(terms.load_pack(SOURCE)))
 
 
 class Folds(unittest.TestCase):
@@ -298,6 +296,78 @@ class RulesChecker(unittest.TestCase):
         doc["history"] = []
         res = self.run_checker(doc)
         self.assertEqual({f["id"]: f["verdict"] for f in res["findings"]}["price_as_offered"], "not_evaluable")
+
+
+class Hardening(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.t = pathlib.Path(self.tmp.name)
+
+    def test_a_bare_time_or_a_non_number_price_is_not_evaluable(self):
+        fold, _ = sticker_deal.CHECKS["paid_before_delivered"]
+        self.assertEqual(fold({"paid_at": "2026-11-01T10:00:00", "delivered_at": "2026-11-01T11:00:00Z"}, None), "not_evaluable")
+        fold, _ = sticker_deal.CHECKS["price_as_offered"]
+        for a, b in ((True, 1), ({}, {}), ("5", "5")):
+            self.assertEqual(fold({"offered_price": a, "accepted_price": b}, None), "not_evaluable")
+
+    def test_publish_refuses_to_write_through_a_link(self):
+        code, res = call("publish", SOURCE, "--workspace", self.t)
+        dest = pathlib.Path(res["published"])
+        target = self.t / "elsewhere"
+        target.write_text("keep")
+        (dest / "compiled.json").unlink()
+        (dest / "compiled.json").symlink_to(target)
+        code, res = call("publish", SOURCE, "--workspace", self.t)
+        self.assertEqual(code, 1)
+        self.assertEqual(target.read_text(), "keep")
+
+    def test_publish_says_it_is_not_in_force_and_names_the_install_command(self):
+        code, res = call("publish", SOURCE, "--workspace", self.t)
+        self.assertFalse(res["in_force"])
+        self.assertIn("profile update --profile deal --rules-checker", res["install"])
+
+    def test_lint_refuses_proves_or_statement_that_disagree_with_the_check(self):
+        text = SOURCE.read_text()
+        for name, bad in (("proves", text.replace("proves: [offered_price, accepted_price]", "proves: [paid_at]")),
+                          ("number", text.replace("within 1 day", "within 2 days"))):
+            path = self.t / f"{name}.yaml"
+            path.write_text(bad)
+            code, res = call("lint", path)
+            self.assertEqual(code, 1, (name, res))
+
+    def test_compare_refuses_runs_over_different_records_of_the_same_sales(self):
+        sales = json.loads(TRADES.read_text())
+        rows = sales["trades"] if isinstance(sales, dict) else sales
+        other = self.t / "other.json"
+        rows[6] = dict(rows[6], accepted_price=rows[6]["offered_price"])
+        other.write_text(json.dumps(rows))
+        runs = []
+        for deals in (TRADES, other):
+            code, res = call("run", SOURCE, "--deals", deals, "--dry-run", "--workspace", self.t / "ws", "--generated-at", GENERATED)
+            runs.append(res["result"])
+        code, res = call("compare", *runs)
+        self.assertEqual(code, 1)
+
+    def test_sales_from_store_with_a_fake_capsulectl(self):
+        import deal_store
+        calls = []
+
+        def run(argv, **kw):
+            calls.append(argv)
+            if "list" in argv:
+                out = json.dumps([{"id": "d1", "kind": "deal", "status": "closed"}, {"id": "s1", "kind": "sale"},
+                                  {"id": "d2", "kind": "deal", "status": "open"}])
+            else:
+                pathlib.Path(argv[argv.index("--output") + 1]).write_text(json.dumps(seller_export(1, 150, 150)))
+                out = ""
+            return subprocess.CompletedProcess(argv, 0, out, "")
+        sales = deal_store.sales_from_store(self.t, run=run)
+        self.assertEqual([s["deal_id"] for s in sales], ["d1"])
+        self.assertEqual(sales[0]["accepted_price"], 150)
+        bad = lambda argv, **kw: subprocess.CompletedProcess(argv, 1, "", "no such profile")
+        with self.assertRaises(deal_store.StoreError):
+            deal_store.sales_from_store(self.t, run=bad)
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ import json
 import os
 import pathlib
 import subprocess
+import tempfile
 
 
 class StoreError(Exception):
@@ -102,17 +103,16 @@ def sales_from_store(home, profile="deal", capsulectl="capsulectl", run=subproce
     except ValueError as e:
         raise StoreError(f"deal list --json is not JSON: {e}")
     items = listing.get("deals", listing) if isinstance(listing, dict) else listing
-    ids = [i.get("id") for i in items if isinstance(i, dict) and i.get("kind") == "deal"
-           and (i.get("status") in (None, "closed"))]
+    ids = [i["id"] for i in items if isinstance(i, dict) and i.get("kind") == "deal"
+           and (i.get("status") in (None, "closed")) and isinstance(i.get("id"), str) and i["id"]]
+    if any("/" in d or ".." in d for d in ids):
+        raise StoreError("a deal id in the listing is not a plain id")
     if not ids:
         raise StoreError(f"{home} holds no closed deals")
-    tmpdir = pathlib.Path(tmp) if tmp else pathlib.Path(os.environ.get("TMPDIR", "/tmp"))
     sales = []
-    for did in ids:
-        out_file = tmpdir / f"terms-export-{did}.json"
-        call(["export", "--deal", did, "--output", str(out_file)])
-        try:
+    with tempfile.TemporaryDirectory(prefix="terms-export-", dir=tmp) as t:
+        for n, did in enumerate(ids):
+            out_file = pathlib.Path(t) / f"{n}.json"
+            call(["export", "--deal", did, "--output", str(out_file)])
             sales.append(sale_from_records(did, json.loads(out_file.read_text())))
-        finally:
-            out_file.unlink(missing_ok=True)
     return sales

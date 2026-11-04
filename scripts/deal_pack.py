@@ -95,6 +95,13 @@ def validate_deal(source):
         proves = row.get("proves")
         if not isinstance(proves, list) or not proves or any(p not in FIELDS for p in proves):
             issues.append(f"{where}.proves must list fields from {list(FIELDS)}")
+        elif _nonempty(row.get("check")):
+            parsed = sticker_deal.parse_check(row["check"])
+            reads = sticker_deal.READS.get(parsed[0]) if parsed else None
+            if parsed and parsed[1] is not None and str(parsed[1]) not in str(row.get("statement")):
+                issues.append(f"{where}.statement must say {parsed[1]}, the number in its check {row['check']!r}")
+            if reads and sorted(proves) != sorted(reads):
+                issues.append(f"{where}.proves must be {list(reads)}, the fields {parsed[0]} reads")
     return issues
 
 

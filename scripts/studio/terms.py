@@ -77,13 +77,7 @@ def load_pack(src):
 
 
 def lint_issues(source):
-    """pack_compile's validation plus: every row has a check that resolves."""
-    issues = pack_compile.validate_source(source)
-    for row in source.get("rows") or []:
-        if isinstance(row, dict) and not row.get("check") and not any(
-                i.startswith(f"rows[") and "has no check" in i for i in issues):
-            issues.append(f"row {row.get('id')!r} has no check")
-    return issues
+    return pack_compile.validate_source(source)
 
 
 def workspace_of(args):
@@ -158,6 +152,7 @@ def build_result(source, deals, generated_at, rehearsal):
         "pack_id": source["pack_id"], "pack_version": source["pack_version"],
         "definition_digest": compiled["definition_digest"],
         "rows": [{"id": r["id"], "statement": r["statement"], "row_digest": r["row_digest"]} for r in rows],
+        "sales": {d["deal_id"]: hashlib.sha256(rfc8785.dumps(d)).hexdigest() for d in deals},
     }
     if rehearsal:
         merged["x-rehearsal"] = True
@@ -260,7 +255,7 @@ def cmd_run(args):
     raw = result_bytes(result)
     run = next_run_dir(ws, source["pack_id"])
     (run / "result.json").write_bytes(raw)
-    (run / "report.html").write_text(page_html(result, raw))
+    (run / "report.html").write_text(page_html(result, raw), encoding="utf-8")
     met, total = came_through(result)
     return out({"run": str(run), "result": str(run / "result.json"), "page": str(run / "report.html"),
                 "rehearsal": bool(args.dry_run), "came_through": met, "sales": total,
@@ -275,7 +270,7 @@ _SCRIPT = re.compile(r'<script type="application/json" id="terms-result" data-sh
 def cmd_verify(args):
     page = pathlib.Path(args.page)
     try:
-        text = page.read_text()
+        text = page.read_text(encoding="utf-8")
     except OSError as e:
         return out({"verified": False, "issues": [f"cannot read {args.page}: {e}"]}, 1)
     m = _SCRIPT.search(text)
@@ -291,7 +286,11 @@ def cmd_verify(args):
         met, total = came_through(result)
     except (ValueError, KeyError, result_v0.RollupError) as e:
         return out({"verified": False, "issues": issues + [f"the embedded record is not a Result: {e}"]}, 1)
-    if not issues and page_html(result, raw) != text:
+    try:
+        edited = not issues and page_html(result, raw) != text
+    except (KeyError, TypeError, AttributeError):
+        return out({"verified": False, "issues": issues + ["the embedded record is not a terms Result"]}, 1)
+    if edited:
         issues.append("the page is not what the embedded record draws: it was edited")
     sibling = page.with_name("result.json")
     if sibling.exists() and sibling.read_bytes() != raw:
@@ -318,6 +317,8 @@ def cmd_compare(args):
     ta, tb = by_deal(a), by_deal(b)
     if set(ta) != set(tb):
         raise TermsError("the two runs are over different sales; compare runs over the same sales")
+    if a["x-pack"].get("sales") != b["x-pack"].get("sales"):
+        raise TermsError("the two runs read different records for the same sales; compare runs over the same records")
     rows_a = {r["id"]: r for r in a["x-pack"]["rows"]}
     rows_b = {r["id"]: r for r in b["x-pack"]["rows"]}
     common = [r for r in rows_a if r in rows_b]
@@ -352,7 +353,10 @@ def cmd_publish(args):
     compiled = deal_pack.compiled(source)
     dest = inside(ws, ws / "published" / source["pack_id"] / compiled["definition_digest"][:12])
     dest.mkdir(parents=True, exist_ok=True)
-    (dest / "compiled.json").write_text(json.dumps(compiled, indent=2) + "\n")
+    for name in ("compiled.json", "pack-source.yaml", "rules-checker.json"):
+        if (dest / name).is_symlink():
+            raise TermsError(f"{dest / name} is a link; refusing to write through it")
+    (dest / "compiled.json").write_text(json.dumps(compiled, indent=2) + "\n", encoding="utf-8")
     shutil.copyfile(args.src, dest / "pack-source.yaml")
     # The pin file `capsulectl profile update --rules-checker` reads (the executable must
     # also sit under a trusted plugin root): the checker, the compiled pack it reads, the digest.
@@ -361,7 +365,9 @@ def cmd_publish(args):
     (dest / "rules-checker.json").write_text(json.dumps(pin, indent=2) + "\n")
     return out({"pack_id": source["pack_id"], "pack_version": source["pack_version"],
                 "definition_digest": compiled["definition_digest"], "published": str(dest),
-                "compiled": str(dest / "compiled.json"), "rules_checker_pin": str(dest / "rules-checker.json")})
+                "compiled": str(dest / "compiled.json"), "rules_checker_pin": str(dest / "rules-checker.json"),
+                "in_force": False,
+                "install": f"capsulectl profile update --profile deal --rules-checker {dest / 'rules-checker.json'}"})
 
 
 def main(argv):

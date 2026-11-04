@@ -47,9 +47,15 @@ def _time(value):
     if not isinstance(value, str):
         return None
     try:
-        return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        t = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    return t if t.tzinfo is not None else None  # RFC 3339 carries an offset; a bare time is no time
+
+
+def _minor(value):
+    """A price in minor units: a whole number, never a bool, string or object."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def paid_before_delivered(deal, arg):
@@ -67,7 +73,7 @@ def delivered_within_days(deal, arg):
 
 
 def price_as_offered(deal, arg):
-    offered, accepted = deal.get("offered_price"), deal.get("accepted_price")
+    offered, accepted = _minor(deal.get("offered_price")), _minor(deal.get("accepted_price"))
     if offered is None or accepted is None:
         return "not_evaluable"
     return "met" if offered == accepted else "not_met"
@@ -78,6 +84,13 @@ CHECKS = {
     "paid_before_delivered": (paid_before_delivered, False),
     "delivered_within_days": (delivered_within_days, True),
     "price_as_offered": (price_as_offered, False),
+}
+
+# name -> the sale fields the fold reads: what a row's `proves` must list
+READS = {
+    "paid_before_delivered": ("paid_at", "delivered_at"),
+    "delivered_within_days": ("paid_at", "delivered_at"),
+    "price_as_offered": ("offered_price", "accepted_price"),
 }
 
 _PAID = datetime.datetime(2026, 11, 1, 10, 0, 0, tzinfo=datetime.timezone.utc)

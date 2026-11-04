@@ -37,7 +37,7 @@ def commit_findings(doc, rows):
         if row["check"] != "price_as_offered":
             f["verdict"] = "not_applicable"
             f["reason"] = "decided after payment and delivery, over the closed sale"
-        elif commit is None or offer is None:
+        elif not all(isinstance(v, int) and not isinstance(v, bool) for v in (commit, offer)):
             f["verdict"] = "not_evaluable"
             f["reason"] = "needs the commit's amount and the deal's last offer"
         else:

@@ -81,8 +81,11 @@ Do not invent a row, a check or a field, and do not stretch one of the three to 
 6. **Switch them on only when the seller says to** ("use these terms on my sales"):
    `terms publish ~/studio/packs/sticker-sale/pack-source.yaml`. Before you run it, say in
    one sentence which terms will be checked on their next sales and ask for a yes. After
-   it, say the terms are published and give the short version of the pack digest it
-   printed (the first 12 characters) so the seller can recognise them on a later receipt.
+   it, give the short version of the pack digest it printed (the first 12 characters).
+   Published is not in force: the terms check sales only after the answer's `install`
+   command has run (it pins the checker on the seller's deal profile). Run it, and only
+   then say the terms are on, so the seller can recognise the digest on a later receipt.
+   If it fails, say the terms are published but not switched on, and why.
 
 ## Never
 
