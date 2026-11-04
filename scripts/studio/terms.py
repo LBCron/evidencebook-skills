@@ -354,9 +354,14 @@ def cmd_publish(args):
     dest.mkdir(parents=True, exist_ok=True)
     (dest / "compiled.json").write_text(json.dumps(compiled, indent=2) + "\n")
     shutil.copyfile(args.src, dest / "pack-source.yaml")
+    # The pin file `capsulectl profile update --rules-checker` reads (the executable must
+    # also sit under a trusted plugin root): the checker, the compiled pack it reads, the digest.
+    pin = {"command": [str(pathlib.Path(__file__).resolve().parent / "terms-checker"), str((dest / "compiled.json").resolve())],
+           "timeout": "10s", "definition_digest": compiled["definition_digest"]}
+    (dest / "rules-checker.json").write_text(json.dumps(pin, indent=2) + "\n")
     return out({"pack_id": source["pack_id"], "pack_version": source["pack_version"],
                 "definition_digest": compiled["definition_digest"], "published": str(dest),
-                "compiled": str(dest / "compiled.json")})
+                "compiled": str(dest / "compiled.json"), "rules_checker_pin": str(dest / "rules-checker.json")})
 
 
 def main(argv):

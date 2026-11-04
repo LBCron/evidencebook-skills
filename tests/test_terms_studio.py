@@ -256,5 +256,49 @@ class DealStore(unittest.TestCase):
                 deal_store.sales_from_exports(t)
 
 
+def check_input(deal_id, offer, commit):
+    body = lambda b: {"agent_input": {"body": b}}
+    return {"schema": "external-check-input/v0", "party_role": "seller",
+            "record": dict(body({"action": "commit", "amount_minor": commit}), deal_id=deal_id, action_id=f"{deal_id}/7"),
+            "history": [dict(body({"action": "offer", "amount_minor": 999}), action_id="deal-other/5"),
+                        dict(body({"action": "offer", "amount_minor": offer}), action_id=f"{deal_id}/5")]}
+
+
+class RulesChecker(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        code, res = call("publish", SOURCE, "--workspace", self.tmp.name)
+        self.assertEqual(code, 0, res)
+        self.res = res
+        self.pin = json.loads((pathlib.Path(res["published"]) / "rules-checker.json").read_text())
+
+    def run_checker(self, doc):
+        p = subprocess.run(self.pin["command"], input=json.dumps(doc), capture_output=True, text=True)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return json.loads(p.stdout)
+
+    def test_publish_writes_the_pin_with_the_pack_digest_and_an_absolute_checker(self):
+        self.assertEqual(self.pin["definition_digest"], self.res["definition_digest"])
+        self.assertTrue(pathlib.Path(self.pin["command"][0]).is_absolute())
+        self.assertTrue(pathlib.Path(self.pin["command"][1]).is_absolute())
+
+    def test_the_price_row_passes_on_the_offered_price_and_fails_on_a_changed_one(self):
+        ok = self.run_checker(check_input("deal-a", 150, 150))
+        self.assertEqual((ok["verdict"], ok["definition_digest"]), ("allow", self.pin["definition_digest"]))
+        by = {f["id"]: f["verdict"] for f in ok["findings"]}
+        self.assertEqual(by, {"paid_before_delivered": "not_applicable", "delivered_within_days": "not_applicable",
+                              "price_as_offered": "pass"})
+        bad = self.run_checker(check_input("deal-a", 150, 175))
+        self.assertEqual(bad["verdict"], "deny")
+        self.assertEqual({f["id"]: f["verdict"] for f in bad["findings"]}["price_as_offered"], "fail")
+
+    def test_no_same_deal_offer_is_not_evaluable(self):
+        doc = check_input("deal-a", 150, 150)
+        doc["history"] = []
+        res = self.run_checker(doc)
+        self.assertEqual({f["id"]: f["verdict"] for f in res["findings"]}["price_as_offered"], "not_evaluable")
+
+
 if __name__ == "__main__":
     unittest.main()
