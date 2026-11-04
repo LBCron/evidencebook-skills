@@ -92,4 +92,4 @@ Do not invent a row, a check or a field, and do not stretch one of the three to 
 - Never run `publish` for a rehearsal, or before the seller said to use the terms.
 - Never claim sales came through that the answer did not count, or round a count.
 - Never edit a published pack: change the source, bump the version, publish again.
-- Never write anywhere but `~/studio`, and never read other files to "help" the rows.
+- Never write anywhere but `~/studio` (the one exception: the `install` command `publish` prints, after the seller's yes), and never read other files to "help" the rows.

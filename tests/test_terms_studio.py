@@ -349,6 +349,33 @@ class Hardening(unittest.TestCase):
         code, res = call("compare", *runs)
         self.assertEqual(code, 1)
 
+    def test_lint_matches_the_whole_number_and_install_quotes_a_spaced_path(self):
+        path = self.t / "ten.yaml"
+        path.write_text(SOURCE.read_text().replace("within 1 day", "within 10 days"))
+        self.assertEqual(call("lint", path)[0], 1)
+        ws = self.t / "my studio"
+        code, res = call("publish", SOURCE, "--workspace", ws)
+        import shlex
+        self.assertEqual(shlex.split(res["install"])[-1], res["rules_checker_pin"])
+
+    def test_verify_and_compare_refuse_malformed_records(self):
+        code, res = call("run", SOURCE, "--deals", TRADES, "--workspace", self.t / "ws", "--generated-at", GENERATED)
+        page = pathlib.Path(res["page"])
+        text = page.read_text(encoding="utf-8")
+        for bad in ('{"claims":null}', '{"claims":[null]}'):
+            import hashlib
+            bad_page = self.t / "bad.html"
+            m = terms._SCRIPT.search(text)
+            raw = bad.encode()
+            tag = text[m.start():m.end()].replace(m.group(4), bad).replace(m.group(1), hashlib.sha256(raw).hexdigest())
+            bad_page.write_text(text[:m.start()] + tag + text[m.end():], encoding="utf-8")
+            self.assertEqual(call("verify", bad_page)[0], 1)
+        old = json.loads(pathlib.Path(res["result"]).read_bytes())
+        del old["x-pack"]["sales"]
+        a = self.t / "a.json"
+        a.write_text(json.dumps(old))
+        self.assertEqual(call("compare", a, a)[0], 1)
+
     def test_sales_from_store_with_a_fake_capsulectl(self):
         import deal_store
         calls = []

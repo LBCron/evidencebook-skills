@@ -32,6 +32,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -284,7 +285,7 @@ def cmd_verify(args):
     try:
         result = json.loads(raw)
         met, total = came_through(result)
-    except (ValueError, KeyError, result_v0.RollupError) as e:
+    except (ValueError, KeyError, TypeError, AttributeError, result_v0.RollupError) as e:
         return out({"verified": False, "issues": issues + [f"the embedded record is not a Result: {e}"]}, 1)
     try:
         edited = not issues and page_html(result, raw) != text
@@ -317,7 +318,10 @@ def cmd_compare(args):
     ta, tb = by_deal(a), by_deal(b)
     if set(ta) != set(tb):
         raise TermsError("the two runs are over different sales; compare runs over the same sales")
-    if a["x-pack"].get("sales") != b["x-pack"].get("sales"):
+    sales_a, sales_b = a["x-pack"].get("sales"), b["x-pack"].get("sales")
+    if not isinstance(sales_a, dict) or not isinstance(sales_b, dict) or set(sales_a) != set(ta):
+        raise TermsError("a run does not record its sales' digests; run both again, then compare")
+    if sales_a != sales_b:
         raise TermsError("the two runs read different records for the same sales; compare runs over the same records")
     rows_a = {r["id"]: r for r in a["x-pack"]["rows"]}
     rows_b = {r["id"]: r for r in b["x-pack"]["rows"]}
@@ -367,7 +371,8 @@ def cmd_publish(args):
                 "definition_digest": compiled["definition_digest"], "published": str(dest),
                 "compiled": str(dest / "compiled.json"), "rules_checker_pin": str(dest / "rules-checker.json"),
                 "in_force": False,
-                "install": f"capsulectl profile update --profile deal --rules-checker {dest / 'rules-checker.json'}"})
+                "install": shlex.join(["capsulectl", "profile", "update", "--profile", "deal", "--rules-checker",
+                                       str(dest / "rules-checker.json")])})
 
 
 def main(argv):

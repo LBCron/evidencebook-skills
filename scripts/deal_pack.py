@@ -98,7 +98,7 @@ def validate_deal(source):
         elif _nonempty(row.get("check")):
             parsed = sticker_deal.parse_check(row["check"])
             reads = sticker_deal.READS.get(parsed[0]) if parsed else None
-            if parsed and parsed[1] is not None and str(parsed[1]) not in str(row.get("statement")):
+            if parsed and parsed[1] is not None and not re.search(rf"(?<!\d){parsed[1]}(?!\d)", str(row.get("statement"))):
                 issues.append(f"{where}.statement must say {parsed[1]}, the number in its check {row['check']!r}")
             if reads and sorted(proves) != sorted(reads):
                 issues.append(f"{where}.proves must be {list(reads)}, the fields {parsed[0]} reads")
