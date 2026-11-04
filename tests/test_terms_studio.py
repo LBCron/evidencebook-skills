@@ -291,6 +291,7 @@ class RulesChecker(unittest.TestCase):
         code, res = call("publish", SOURCE, "--workspace", self.tmp.name)
         self.assertEqual(code, 0, res)
         self.res = res
+        self.tmp_path = pathlib.Path(self.tmp.name)
         self.pin = json.loads((pathlib.Path(res["published"]) / "rules-checker.json").read_text())
 
     def run_checker(self, doc):
@@ -302,6 +303,15 @@ class RulesChecker(unittest.TestCase):
         self.assertEqual(self.pin["definition_digest"], self.res["definition_digest"])
         self.assertTrue(pathlib.Path(self.pin["command"][0]).is_absolute())
         self.assertTrue(pathlib.Path(self.pin["command"][1]).is_absolute())
+
+    def test_the_checker_runs_alone_as_capsulectl_copies_it(self):
+        import shutil
+        lone = self.tmp_path / "lone" / "terms-checker"
+        lone.parent.mkdir()
+        shutil.copy(self.pin["command"][0], lone)
+        self.pin["command"][0] = str(lone)
+        res = self.run_checker(check_input("deal-a", 150, 150))
+        self.assertEqual(res["verdict"], "allow")
 
     def test_the_price_row_passes_on_the_offered_price_and_fails_on_a_changed_one(self):
         ok = self.run_checker(check_input("deal-a", 150, 150))
