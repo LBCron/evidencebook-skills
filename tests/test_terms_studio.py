@@ -253,6 +253,16 @@ class DealStore(unittest.TestCase):
         sale = deal_store.sale_from_records("deal-07", records)
         self.assertEqual((sale["offered_price"], sale["accepted_price"]), (150, 175))
         self.assertNotIn("commit_seen", sale)
+        for changed in (True, "not_price"):
+            bad = seller_export(9, 150, 150)
+            bad.insert(-1, {"body": {"changed": changed, "terms": {"price_minor": 175}},
+                            "x-deal-v0": {"record_type": "detail_change"}})
+            self.assertEqual(deal_store.sale_from_records("d", bad)["accepted_price"], 150)
+        re_commit = seller_export(10, 150, 150)
+        re_commit.insert(-1, {"body": {"changed": ["price"], "terms": {"price_minor": 175}},
+                              "x-deal-v0": {"record_type": "detail_change"}})
+        re_commit.insert(-1, {"type": "action-record/v0", "body": {"action": "commit", "amount_minor": 200}})
+        self.assertEqual(deal_store.sale_from_records("d", re_commit)["accepted_price"], 200)
         other = seller_export(8, 150, 150)
         other.insert(-1, {"body": {"changed": ["handover"]}, "x-deal-v0": {"record_type": "detail_change"}})
         self.assertEqual(deal_store.sale_from_records("deal-08", other)["accepted_price"], 150)

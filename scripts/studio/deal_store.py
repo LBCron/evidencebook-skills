@@ -63,7 +63,8 @@ def sale_from_records(deal_id, records):
         if x.get("record_type") == "detail_change":
             # The seller moved a term after the commit: the price actually charged.
             terms = body.get("terms") if isinstance(body.get("terms"), dict) else {}
-            if "commit_seen" in sale and "price" in (body.get("changed") or []) and _minor(terms.get("price_minor")) is not None:
+            changed = body.get("changed")
+            if "commit_seen" in sale and isinstance(changed, list) and "price" in changed and _minor(terms.get("price_minor")) is not None:
                 changed_price = terms["price_minor"]
         elif kind == "action-record/v0":
             if body.get("action") == "offer" and _amount(body) is not None:
@@ -71,6 +72,7 @@ def sale_from_records(deal_id, records):
             elif body.get("action") == "commit" and _amount(body) is not None:
                 sale["accepted_price"] = _amount(body)
                 sale["commit_seen"] = True
+                changed_price = None  # a later commit supersedes an earlier change
         elif kind == "action-outcome/v0" and body.get("status") == "unchecked_action":
             att = body.get("attempted")
             if isinstance(att, dict) and att.get("action") == "commit" and _amount(att) is not None:
