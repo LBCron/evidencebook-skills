@@ -18,6 +18,7 @@ skills that evolution compiles. The two cron skills run (see "Running the two cr
 | 2 | `daily-judge-and-close` | [`daily-judge-and-close/SKILL.md`](daily-judge-and-close/SKILL.md) | runnable: `scripts/run_daily.py` |
 | 3 | `weekly-blind-expert` | [`weekly-blind-expert/SKILL.md`](weekly-blind-expert/SKILL.md) | runnable: `scripts/run_weekly.py` |
 | 5 | `evidencebook-report` | [`evidencebook-report/SKILL.md`](evidencebook-report/SKILL.md) | drafted: the three grades (narrated, sealed and checked, stamped) over `capsulectl book result build`, `report build --seal`, `report check`; `scripts/report.sh --seal`, `scripts/packs.py`, `scripts/narration_check.py` |
+| 6 | `terms-pack-author` | [`terms-pack-author/SKILL.md`](terms-pack-author/SKILL.md) | runnable: `scripts/studio/terms` (lint, test, run, verify, compare, publish) over a deal terms pack |
 | 4 | `capsulectl` (thin verb skill) | **not here** | ships with `capsule-cli` at `skills/capsulectl/`, generated from `spec.yaml` |
 
 Skill 4 is consumed, not vendored. Nothing in this repo copies its `SKILL.md`/`AGENTS.md` or

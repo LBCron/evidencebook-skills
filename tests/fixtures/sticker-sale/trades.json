@@ -1,0 +1,74 @@
+{
+  "trades": [
+    {
+      "deal_id": "sticker-01",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-11T10:00:00Z",
+      "delivered_at": "2026-10-11T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-02",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-12T10:00:00Z",
+      "delivered_at": "2026-10-12T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-03",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-13T10:00:00Z",
+      "delivered_at": "2026-10-13T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-04",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-14T10:00:00Z",
+      "delivered_at": "2026-10-14T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-05",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-15T10:00:00Z",
+      "delivered_at": "2026-10-15T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-06",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-16T10:00:00Z",
+      "delivered_at": "2026-10-16T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-07",
+      "offered_price": 500,
+      "accepted_price": 450,
+      "paid_at": "2026-10-17T10:00:00Z",
+      "delivered_at": "2026-10-17T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-08",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-18T10:00:00Z",
+      "delivered_at": "2026-10-18T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-09",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-19T10:00:00Z",
+      "delivered_at": "2026-10-19T15:30:00Z"
+    },
+    {
+      "deal_id": "sticker-10",
+      "offered_price": 500,
+      "accepted_price": 500,
+      "paid_at": "2026-10-20T10:00:00Z",
+      "delivered_at": "2026-10-20T15:30:00Z"
+    }
+  ]
+}

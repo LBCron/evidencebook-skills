@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# terms -- the Terms Pack Studio verbs: lint, test, run, verify, compare, publish.
+# One entry point because a bare `test` is the shell's own; see terms.py.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${TERMS_PYTHON:-python3}" "$here/terms.py" "$@"

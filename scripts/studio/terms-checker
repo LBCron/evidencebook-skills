@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# terms-checker COMPILED_JSON -- a deal terms pack as a capsulectl rules checker; see terms_checker.py.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${TERMS_PYTHON:-python3}" "$here/terms_checker.py" "$@"

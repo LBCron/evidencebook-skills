@@ -1,0 +1,29 @@
+# sticker-sale -- a seller's terms for a sticker sale, three rows, all
+# recomputed from the sale's own records (no judge, no key).
+# Terms Pack Studio first demo (evidencebook-skills#117). Edit a row in words,
+# then `terms lint`, `terms test`, `terms run`.
+scope:
+  kind: deal
+pack_id: sticker-sale
+pack_version: 0.1.0
+title: Sticker sale terms
+statement: >-
+  A sticker sale came through when the buyer paid before delivery, the sticker
+  was delivered within a day of payment, and the price was the price offered.
+evaluator: sticker_deal
+rows:
+  - id: paid_before_delivered
+    statement: The buyer paid before the sticker was delivered.
+    tier: recomputed
+    check: paid_before_delivered
+    proves: [paid_at, delivered_at]
+  - id: delivered_within_days
+    statement: The sticker was delivered within 1 day of payment.
+    tier: recomputed
+    check: delivered_within_days(1)
+    proves: [paid_at, delivered_at]
+  - id: price_as_offered
+    statement: The price was the price offered.
+    tier: recomputed
+    check: price_as_offered
+    proves: [offered_price, accepted_price]

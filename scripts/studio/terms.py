@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""terms -- the Terms Pack Studio verbs for a seller's deal terms pack.
+
+    terms lint    SRC
+    terms test    SRC
+    terms run     SRC (--deals FILE | --exports DIR | --store HOME) [--dry-run] [--workspace DIR]
+    terms verify  PAGE
+    terms compare A B
+    terms publish SRC [--workspace DIR]
+
+SRC is a pack-source.yaml with `scope.kind: deal` (scripts/deal_pack.py). Every
+verb prints one JSON object on stdout and exits 0, or 1 with the reason in it.
+The entry point is scripts/studio/terms (a bare `test` would be the shell's).
+
+The workspace (default ~/studio, or $TERMS_WORKSPACE) is the only place a verb
+writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html} and `publish`
+writes published/<pack_id>/<digest>/. SRC, --deals and the Results `compare`
+reads are only read.
+
+A Result is Evidence Result v0 (scripts/result_v0.py), one claim per sale per
+row, plus two document members: `x-pack` (the pack's id, version, definition
+digest and each row's digest) and, on a rehearsal, `x-rehearsal: true`. The page
+carries result.json's exact bytes in a <script type="application/json">, and
+states their SHA-256 beside them; `terms verify` checks the page against itself
+offline.
+"""
+import argparse
+import datetime
+import hashlib
+import html
+import json
+import os
+import pathlib
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "scripts" / "evaluators"))
+sys.path.insert(0, str(ROOT / "scripts" / "studio"))
+
+import rfc8785  # noqa: E402
+import yaml  # noqa: E402
+
+import deal_pack  # noqa: E402
+import deal_store  # noqa: E402
+import pack_compile  # noqa: E402
+import result_v0  # noqa: E402
+import sticker_deal  # noqa: E402
+
+DEFAULT_WORKSPACE = "~/studio"
+
+
+class TermsError(Exception):
+    """A refusal, said in words."""
+
+
+def out(obj, code=0):
+    print(json.dumps(obj, indent=2, sort_keys=False))
+    return code
+
+
+def load_pack(src):
+    path = pathlib.Path(src)
+    try:
+        source = pack_compile.load_source(path.read_text())
+    except (OSError, yaml.YAMLError) as e:
+        raise TermsError(f"cannot read {src}: {e}")
+    if not deal_pack.is_deal(source):
+        raise TermsError(f"{src} is not a deal terms pack (scope.kind: deal)")
+    issues = lint_issues(source)
+    if issues:
+        raise TermsError("; ".join(issues))
+    return source
+
+
+def lint_issues(source):
+    return pack_compile.validate_source(source)
+
+
+def workspace_of(args):
+    ws = pathlib.Path(args.workspace or os.environ.get("TERMS_WORKSPACE") or DEFAULT_WORKSPACE).expanduser()
+    ws.mkdir(parents=True, exist_ok=True)
+    return ws.resolve()
+
+
+def inside(ws, path):
+    """path, which must resolve inside the workspace (a link out is refused)."""
+    resolved = path.resolve()
+    if ws != resolved and ws not in resolved.parents:
+        raise TermsError(f"{path} is outside the workspace {ws}")
+    return resolved
+
+
+def load_deals(path):
+    try:
+        data = json.loads(pathlib.Path(path).read_text())
+    except (OSError, ValueError) as e:
+        raise TermsError(f"cannot read the sales file {path}: {e}")
+    if isinstance(data, dict):
+        data = data.get("trades") or data.get("deals")
+    if not isinstance(data, list) or not data:
+        raise TermsError(f"{path} holds no sales: expected a list, or {{\"trades\": [...]}}")
+    deals = []
+    for i, d in enumerate(data):
+        did = d.get("deal_id", d.get("id")) if isinstance(d, dict) else None
+        if not isinstance(did, str) or not did or "::" in did:
+            raise TermsError(f"sale {i} has no deal_id (or id) the Result can name")
+        deals.append(dict(d, deal_id=did))
+    if len({d["deal_id"] for d in deals}) != len(deals):
+        raise TermsError("two sales share a deal_id")
+    return deals
+
+
+def load_sales(args):
+    try:
+        if args.exports:
+            return deal_store.sales_from_exports(args.exports)
+        if args.store:
+            return deal_store.sales_from_store(args.store)
+    except (deal_store.StoreError, OSError, subprocess.SubprocessError) as e:
+        raise TermsError(str(e))
+    if not args.deals:
+        raise TermsError("name the sales: --deals FILE, --exports DIR of `deal export` files, or --store HOME")
+    return load_deals(args.deals)
+
+
+def result_bytes(result):
+    """The Result's bytes as written to result.json and embedded in the page:
+    compact, sorted, ASCII, and `</` escaped so the page's <script> cannot be
+    closed from inside (still the same JSON)."""
+    return json.dumps(result, sort_keys=True, ensure_ascii=True, separators=(",", ":")).replace("</", "<\\/").encode()
+
+
+def build_result(source, deals, generated_at, rehearsal):
+    compiled = deal_pack.compiled(source)
+    rows = compiled["rows"]
+    ids = tuple(r["id"] for r in rows)
+    verdicts = sticker_deal.evaluate(source["rows"], deals)
+    docs = []
+    for deal in deals:
+        evidence = hashlib.sha256(rfc8785.dumps(deal)).hexdigest()
+        doc, _ = result_v0.build_result_v0(
+            deal["deal_id"], verdicts[deal["deal_id"]], {}, generated_at, ids, compiled["contract_ref"],
+            {rid: "recomputed" for rid in ids}, source_capsule_ids={rid: evidence for rid in ids},
+            case_scoped_ids=True)
+        docs.append(doc)
+    merged = result_v0.merge_result_v0_documents(docs, f"{source['title']} -- {len(deals)} sales", generated_at)
+    merged["x-pack"] = {
+        "pack_id": source["pack_id"], "pack_version": source["pack_version"],
+        "definition_digest": compiled["definition_digest"],
+        "rows": [{"id": r["id"], "statement": r["statement"], "row_digest": r["row_digest"]} for r in rows],
+        "sales": {d["deal_id"]: hashlib.sha256(rfc8785.dumps(d)).hexdigest() for d in deals},
+    }
+    if rehearsal:
+        merged["x-rehearsal"] = True
+    return merged
+
+
+def came_through(result):
+    head = result_v0.headline_from_result(result)
+    return head["resolved"], head["cases"]
+
+
+def undecided_or_missed(result, verdict):
+    """{deal_id: [row ids]} of the sales with a row at this verdict. A sale the terms
+    could not decide is neither came-through nor missed."""
+    found = {}
+    for deal, rows in by_deal(result).items():
+        hit = sorted(r for r, v in rows.items() if v == verdict)
+        if hit:
+            found[deal] = hit
+    return found
+
+
+def by_deal(result):
+    """{deal_id: {row_id: verdict}} from a Result's claims."""
+    table = {}
+    for claim in result["claims"]:
+        deal_id, _, row_id = claim["id"].rpartition("::")
+        table.setdefault(deal_id, {})[row_id] = claim["verdict"]
+    return table
+
+
+def page_html(result, raw):
+    pack = result["x-pack"]
+    met, total = came_through(result)
+    table = by_deal(result)
+    rehearsal = bool(result.get("x-rehearsal"))
+    rows = pack["rows"]
+    esc = html.escape
+    counts = []
+    for r in rows:
+        v = [table[d][r["id"]] for d in table]
+        counts.append((r, v.count("met"), v.count("not_met"), v.count("not_evaluable")))
+    misses = [(d, r) for d in table for r in rows if table[d][r["id"]] == "not_met"]
+    cells = "".join(
+        f"<tr><td>{esc(r['statement'])}</td><td>{m}</td><td>{n}</td><td>{u}</td></tr>" for r, m, n, u in counts)
+    missed = "".join(f"<li>{esc(d)}: {esc(r['statement'])}</li>" for d, r in misses) or "<li>none</li>"
+    banner = ('<p id="stamp" class="stamp">REHEARSAL: nothing was switched on; these terms were tried over past sales.</p>'
+              if rehearsal else "")
+    digest = hashlib.sha256(raw).hexdigest()
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{esc(result['view']['title'])}</title>
+<style>body{{font:16px/1.5 system-ui,sans-serif;margin:0 auto;max-width:44rem;padding:1rem 16px}}
+.stamp{{background:#fde68a;color:#1f1300;padding:.5rem .75rem;font-weight:600}}
+table{{border-collapse:collapse;width:100%}}td,th{{border-bottom:1px solid #8884;padding:.35rem .5rem;text-align:left}}
+code{{overflow-wrap:anywhere}}</style></head><body>
+{banner}
+<h1>{esc(pack['pack_id'])} {esc(pack['pack_version'])}</h1>
+<p id="headline" data-came-through="{met}" data-total="{total}"><strong>{met} of {total}</strong> sales came through.</p>
+<table><tr><th>Term</th><th>Met</th><th>Missed</th><th>Could not decide</th></tr>{cells}</table>
+<h2>Missed</h2><ul>{missed}</ul>
+<p>Pack digest <code id="pack-digest">{pack['definition_digest']}</code><br>
+The record below is the same bytes as <code>result.json</code>; its SHA-256 is <code id="result-digest">{digest}</code>.</p>
+<script type="application/json" id="terms-result" data-sha256="{digest}" data-rehearsal="{str(rehearsal).lower()}" data-pack-digest="{pack['definition_digest']}">{raw.decode()}</script>
+</body></html>
+"""
+
+
+def cmd_lint(args):
+    path = pathlib.Path(args.src)
+    try:
+        source = pack_compile.load_source(path.read_text())
+    except (OSError, yaml.YAMLError) as e:
+        return out({"valid": False, "issues": [f"cannot read {args.src}: {e}"]}, 1)
+    if not deal_pack.is_deal(source):
+        return out({"valid": False, "issues": ["scope.kind must be deal"]}, 1)
+    issues = lint_issues(source)
+    return out({"valid": not issues, "issues": issues}, 0 if not issues else 1)
+
+
+def cmd_test(args):
+    source = load_pack(args.src)
+    results, failed = [], False
+    for row in source["rows"]:
+        name, arg = sticker_deal.parse_check(row["check"])
+        met_case, miss_case = sticker_deal.CASES[name](arg)
+        fold, _ = sticker_deal.row_check(row)
+        got = (fold(met_case, arg), fold(miss_case, arg))
+        ok = got == ("met", "not_met")
+        failed |= not ok
+        results.append({"row": row["id"], "check": row["check"], "passed": ok,
+                        "met_case": got[0], "miss_case": got[1]})
+    return out({"passed": not failed, "rows": results}, 1 if failed else 0)
+
+
+def next_run_dir(ws, pack_id):
+    base = inside(ws, ws / "runs" / pack_id)
+    base.mkdir(parents=True, exist_ok=True)
+    n = 1 + max([int(p.name) for p in base.iterdir() if p.name.isdigit()] or [0])
+    run = base / f"{n:03d}"
+    run.mkdir()
+    return run
+
+
+def cmd_run(args):
+    source = load_pack(args.src)
+    deals = load_sales(args)
+    ws = workspace_of(args)
+    generated_at = args.generated_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    result = build_result(source, deals, generated_at, args.dry_run)
+    raw = result_bytes(result)
+    run = next_run_dir(ws, source["pack_id"])
+    (run / "result.json").write_bytes(raw)
+    (run / "report.html").write_text(page_html(result, raw), encoding="utf-8")
+    met, total = came_through(result)
+    return out({"run": str(run), "result": str(run / "result.json"), "page": str(run / "report.html"),
+                "rehearsal": bool(args.dry_run), "came_through": met, "sales": total,
+                "missed": undecided_or_missed(result, "not_met"),
+                "could_not_decide": undecided_or_missed(result, "not_evaluable"),
+                "pack_digest": result["x-pack"]["definition_digest"],
+                "result_sha256": hashlib.sha256(raw).hexdigest()})
+
+
+_SCRIPT = re.compile(r'<script type="application/json" id="terms-result" data-sha256="([0-9a-f]{64})" '
+                     r'data-rehearsal="(true|false)" data-pack-digest="([0-9a-f]{64})">(.*?)</script>', re.S)
+
+
+def cmd_verify(args):
+    page = pathlib.Path(args.page)
+    try:
+        text = page.read_text(encoding="utf-8")
+    except OSError as e:
+        return out({"verified": False, "issues": [f"cannot read {args.page}: {e}"]}, 1)
+    m = _SCRIPT.search(text)
+    if not m:
+        return out({"verified": False, "issues": ["the page carries no terms-result record"]}, 1)
+    declared, rehearsal, pack_digest, body = m.groups()
+    raw = body.encode()
+    issues = []
+    if hashlib.sha256(raw).hexdigest() != declared:
+        issues.append("the embedded record does not match the digest the page states")
+    try:
+        result = json.loads(raw)
+        met, total = came_through(result)
+    except (ValueError, KeyError, TypeError, AttributeError, result_v0.RollupError) as e:
+        return out({"verified": False, "issues": issues + [f"the embedded record is not a Result: {e}"]}, 1)
+    try:
+        edited = not issues and page_html(result, raw) != text
+    except (KeyError, TypeError, AttributeError):
+        return out({"verified": False, "issues": issues + ["the embedded record is not a terms Result"]}, 1)
+    if edited:
+        issues.append("the page is not what the embedded record draws: it was edited")
+    sibling = page.with_name("result.json")
+    if sibling.exists() and sibling.read_bytes() != raw:
+        issues.append("result.json beside the page is not the same bytes")
+    return out({"verified": not issues, "issues": issues, "came_through": met, "sales": total,
+                "rehearsal": bool(result.get("x-rehearsal")), "pack_digest": pack_digest,
+                "result_sha256": declared}, 1 if issues else 0)
+
+
+def read_result(arg):
+    path = pathlib.Path(arg)
+    if path.is_dir():
+        path = path / "result.json"
+    try:
+        result = json.loads(path.read_text())
+        result["x-pack"]["rows"]
+    except (OSError, ValueError, KeyError) as e:
+        raise TermsError(f"{arg} is not a terms Result: {e}")
+    return result
+
+
+def cmd_compare(args):
+    a, b = read_result(args.a), read_result(args.b)
+    ta, tb = by_deal(a), by_deal(b)
+    if set(ta) != set(tb):
+        raise TermsError("the two runs are over different sales; compare runs over the same sales")
+    sales_a, sales_b = a["x-pack"].get("sales"), b["x-pack"].get("sales")
+    if not isinstance(sales_a, dict) or not isinstance(sales_b, dict) or set(sales_a) != set(ta):
+        raise TermsError("a run does not record its sales' digests; run both again, then compare")
+    if sales_a != sales_b:
+        raise TermsError("the two runs read different records for the same sales; compare runs over the same records")
+    rows_a = {r["id"]: r for r in a["x-pack"]["rows"]}
+    rows_b = {r["id"]: r for r in b["x-pack"]["rows"]}
+    common = [r for r in rows_a if r in rows_b]
+    rows, lines = [], []
+    for rid in common:
+        improved = sum(1 for d in ta if tb[d][rid] == "met" and ta[d][rid] != "met")
+        regressed = sum(1 for d in ta if ta[d][rid] == "met" and tb[d][rid] != "met")
+        ties = len(ta) - improved - regressed
+        kind = ("Tradeoff" if improved and regressed else "Improvement" if improved else
+                "Regression" if regressed else "Tie")
+        changed = rows_a[rid]["row_digest"] != rows_b[rid]["row_digest"]
+        rows.append({"row": rid, "result": kind, "improved": improved, "regressed": regressed, "tied": ties,
+                     "row_changed": changed})
+        lines.append(f"{rid}: {kind} ({improved} improved, {regressed} regressed, {ties} ties)"
+                     + (", row reworded or changed" if changed else ""))
+    added, removed = sorted(set(rows_b) - set(rows_a)), sorted(set(rows_a) - set(rows_b))
+    same_rows = not added and not removed
+    (ma, na), (mb, nb) = came_through(a), came_through(b)
+    lines.append(f"sales that came through: {ma} of {na} before, {mb} of {nb} after")
+    return out({
+        "same_rows": same_rows, "rows_added": added, "rows_removed": removed, "rows": rows,
+        "before": {"pack_digest": a["x-pack"]["definition_digest"], "came_through": ma, "sales": na,
+                   "rehearsal": bool(a.get("x-rehearsal"))},
+        "after": {"pack_digest": b["x-pack"]["definition_digest"], "came_through": mb, "sales": nb,
+                  "rehearsal": bool(b.get("x-rehearsal"))},
+        "summary": lines})
+
+
+def cmd_publish(args):
+    source = load_pack(args.src)
+    ws = workspace_of(args)
+    compiled = deal_pack.compiled(source)
+    dest = inside(ws, ws / "published" / source["pack_id"] / compiled["definition_digest"][:12])
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in ("compiled.json", "pack-source.yaml", "rules-checker.json"):
+        if (dest / name).is_symlink():
+            raise TermsError(f"{dest / name} is a link; refusing to write through it")
+    (dest / "compiled.json").write_text(json.dumps(compiled, indent=2) + "\n", encoding="utf-8")
+    shutil.copyfile(args.src, dest / "pack-source.yaml")
+    # The pin file `capsulectl profile update --rules-checker` reads (the executable must
+    # also sit under a trusted plugin root): the checker, the compiled pack it reads, the digest.
+    pin = {"command": [str(pathlib.Path(__file__).resolve().parent / "terms-checker"), str((dest / "compiled.json").resolve())],
+           "timeout": "10s", "definition_digest": compiled["definition_digest"]}
+    (dest / "rules-checker.json").write_text(json.dumps(pin, indent=2) + "\n")
+    return out({"pack_id": source["pack_id"], "pack_version": source["pack_version"],
+                "definition_digest": compiled["definition_digest"], "published": str(dest),
+                "compiled": str(dest / "compiled.json"), "rules_checker_pin": str(dest / "rules-checker.json"),
+                "in_force": False,
+                "install": shlex.join(["capsulectl", "profile", "update", "--profile", "deal", "--rules-checker",
+                                       str(dest / "rules-checker.json")])})
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="terms", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("lint", "test", "publish"):
+        p = sub.add_parser(name)
+        p.add_argument("src")
+        if name == "publish":
+            p.add_argument("--workspace")
+    p = sub.add_parser("run")
+    p.add_argument("src")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--deals", help="JSON file of sales: a list, or {\"trades\": [...]}")
+    g.add_argument("--exports", help="directory of `capsulectl deal export` files, one per deal, named <deal id>.json")
+    g.add_argument("--store", help="a seller's store home (XDG_HOME): reads its closed deals through capsulectl")
+    p.add_argument("--dry-run", action="store_true", help="rehearsal: stamp the page, switch nothing on")
+    p.add_argument("--workspace")
+    p.add_argument("--generated-at")
+    p = sub.add_parser("verify")
+    p.add_argument("page")
+    p = sub.add_parser("compare")
+    p.add_argument("a", help="the earlier run's result.json, or its run directory")
+    p.add_argument("b", help="the later run's result.json, or its run directory")
+    args = ap.parse_args(argv)
+    try:
+        return {"lint": cmd_lint, "test": cmd_test, "run": cmd_run, "verify": cmd_verify,
+                "compare": cmd_compare, "publish": cmd_publish}[args.cmd](args)
+    except (TermsError, result_v0.RollupError, ValueError) as e:
+        return out({"error": str(e)}, 1)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
