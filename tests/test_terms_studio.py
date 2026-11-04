@@ -376,6 +376,17 @@ class Hardening(unittest.TestCase):
         a.write_text(json.dumps(old))
         self.assertEqual(call("compare", a, a)[0], 1)
 
+    def test_run_names_the_missed_and_the_undecided_sales_apart(self):
+        rows = json.loads(TRADES.read_text())
+        rows = rows["trades"] if isinstance(rows, dict) else rows
+        rows[0] = {k: v for k, v in rows[0].items() if k != "delivered_at"}
+        path = self.t / "sales.json"
+        path.write_text(json.dumps(rows))
+        code, res = call("run", SOURCE, "--deals", path, "--dry-run", "--workspace", self.t / "ws", "--generated-at", GENERATED)
+        self.assertEqual(list(res["missed"]), ["sticker-07"])
+        self.assertEqual(list(res["could_not_decide"]), [rows[0].get("deal_id", rows[0].get("id"))])
+        self.assertEqual(res["came_through"], 8)
+
     def test_sales_from_store_with_a_fake_capsulectl(self):
         import deal_store
         calls = []

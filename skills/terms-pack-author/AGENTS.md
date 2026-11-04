@@ -66,9 +66,13 @@ Do not invent a row, a check or a field, and do not stretch one of the three to 
    sale it should accept and one it should refuse. If a row fails, fix it; never tell the
    seller their terms are ready while a row fails.
 4. **Try the terms over past sales**:
-   `terms run ~/studio/packs/sticker-sale/pack-source.yaml --deals SALES --dry-run`
-   where SALES is the sales file the studio setup gives you. Say how many sales came
-   through out of how many, and name each that missed with the term it missed. Tell the
+   `terms run ~/studio/packs/sticker-sale/pack-source.yaml --store STORE --dry-run`
+   where STORE is the seller's deal store (the home the studio setup names): the sales are
+   read from what their deals sealed, which is the point. Use `--deals FILE` (a JSON file of
+   sales) only as an offline fallback, and say so when you do. Say how many sales came
+   through out of how many, name each that missed (the answer's `missed`) with the term it
+   missed, and name each the terms could not decide (`could_not_decide`) with the term. A
+   sale the terms could not decide is never counted as came through and never as missed. Tell the
    seller this was a rehearsal: nothing is switched on. The answer's `page` is a report
    page; tell the seller where it is so they can open it, and that it holds the same record
    the numbers come from. `terms verify PAGE` checks a page against its own record.
@@ -81,10 +85,10 @@ Do not invent a row, a check or a field, and do not stretch one of the three to 
 6. **Switch them on only when the seller says to** ("use these terms on my sales"):
    `terms publish ~/studio/packs/sticker-sale/pack-source.yaml`. Before you run it, say in
    one sentence which terms will be checked on their next sales and ask for a yes. After
-   it, give the short version of the pack digest it printed (the first 12 characters).
+   it, give the first 12 characters of the pack digest it printed and call it "your terms' fingerprint".
    Published is not in force: the terms check sales only after the answer's `install`
    command has run (it pins the checker on the seller's deal profile). Run it, and only
-   then say the terms are on, so the seller can recognise the digest on a later receipt.
+   then say the terms are on. Do not say the fingerprint will appear on a receipt: that is not in place yet.
    If it fails, say the terms are published but not switched on, and why.
 
 ## Never

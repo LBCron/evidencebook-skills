@@ -165,6 +165,17 @@ def came_through(result):
     return head["resolved"], head["cases"]
 
 
+def undecided_or_missed(result, verdict):
+    """{deal_id: [row ids]} of the sales with a row at this verdict. A sale the terms
+    could not decide is neither came-through nor missed."""
+    found = {}
+    for deal, rows in by_deal(result).items():
+        hit = sorted(r for r, v in rows.items() if v == verdict)
+        if hit:
+            found[deal] = hit
+    return found
+
+
 def by_deal(result):
     """{deal_id: {row_id: verdict}} from a Result's claims."""
     table = {}
@@ -260,6 +271,8 @@ def cmd_run(args):
     met, total = came_through(result)
     return out({"run": str(run), "result": str(run / "result.json"), "page": str(run / "report.html"),
                 "rehearsal": bool(args.dry_run), "came_through": met, "sales": total,
+                "missed": undecided_or_missed(result, "not_met"),
+                "could_not_decide": undecided_or_missed(result, "not_evaluable"),
                 "pack_digest": result["x-pack"]["definition_digest"],
                 "result_sha256": hashlib.sha256(raw).hexdigest()})
 
