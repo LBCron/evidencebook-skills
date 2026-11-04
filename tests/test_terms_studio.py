@@ -214,5 +214,47 @@ class Folds(unittest.TestCase):
         self.assertEqual(fold({"paid_at": "2026-11-01T10:00:00Z", "delivered_at": "2026-11-01T09:00:00Z"}, None), "not_met")
 
 
+def seller_export(n, offer, commit, paid="2026-11-04T10:00:01Z", delivered="2026-11-04T10:00:02Z"):
+    """A seller's `deal export` records for one trade, in evidencebook-deal's shapes
+    (testdata/studio/README.md); commit=None is trade 7, the unchecked price change."""
+    rec = lambda t, b, at="2026-11-04T10:00:00Z": {"type": t, "at": at, "body": b}
+    out = [rec("baseline", {}), rec("action-record/v0", {"action": "offer", "amount_minor": offer})]
+    if commit is None:
+        out.append(rec("action-outcome/v0", {"status": "unchecked_action", "outcome": "mismatch",
+                                             "attempted": {"action": "commit", "amount_minor": 175}}))
+    else:
+        out.append(rec("action-record/v0", {"action": "commit", "amount_minor": commit}))
+    out += [rec("evidence", {"source": "x402_settle_response"}, paid),
+            {"type": "evidence", "body": {"source": "seller_handoff"}, "x-deal-v0": {"at": delivered}},
+            rec("close", {})]
+    return out
+
+
+class DealStore(unittest.TestCase):
+    def test_ten_exported_deals_read_nine_of_ten_with_the_price_change_the_miss(self):
+        with tempfile.TemporaryDirectory() as t:
+            tmp = pathlib.Path(t)
+            ex = tmp / "exports"
+            ex.mkdir()
+            for n in range(1, 11):
+                records = seller_export(n, 150, None if n == 7 else 150)
+                (ex / f"deal-{n:02d}.json").write_text(json.dumps(records))
+            code, res = call("run", SOURCE, "--exports", ex, "--dry-run", "--workspace", tmp / "ws",
+                             "--generated-at", GENERATED)
+            self.assertEqual(code, 0, res)
+            self.assertEqual((res["came_through"], res["sales"]), (9, 10))
+            result = json.loads(pathlib.Path(res["result"]).read_bytes())
+            misses = {c["id"] for c in result["claims"] if c["verdict"] == "not_met"}
+            self.assertEqual(misses, {"deal-07::price_as_offered"})
+
+    def test_a_deal_without_the_facts_is_not_evaluable_and_empty_exports_are_refused(self):
+        import deal_store
+        sale = deal_store.sale_from_records("d", [{"type": "baseline", "body": {}}])
+        self.assertEqual(sale, {"deal_id": "d"})
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(deal_store.StoreError):
+                deal_store.sales_from_exports(t)
+
+
 if __name__ == "__main__":
     unittest.main()

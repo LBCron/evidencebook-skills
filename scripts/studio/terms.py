@@ -3,7 +3,7 @@
 
     terms lint    SRC
     terms test    SRC
-    terms run     SRC --deals FILE [--dry-run] [--workspace DIR]
+    terms run     SRC (--deals FILE | --exports DIR | --store HOME) [--dry-run] [--workspace DIR]
     terms verify  PAGE
     terms compare A B
     terms publish SRC [--workspace DIR]
@@ -33,16 +33,19 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "evaluators"))
+sys.path.insert(0, str(ROOT / "scripts" / "studio"))
 
 import rfc8785  # noqa: E402
 import yaml  # noqa: E402
 
 import deal_pack  # noqa: E402
+import deal_store  # noqa: E402
 import pack_compile  # noqa: E402
 import result_v0  # noqa: E402
 import sticker_deal  # noqa: E402
@@ -115,6 +118,19 @@ def load_deals(path):
     if len({d["deal_id"] for d in deals}) != len(deals):
         raise TermsError("two sales share a deal_id")
     return deals
+
+
+def load_sales(args):
+    try:
+        if args.exports:
+            return deal_store.sales_from_exports(args.exports)
+        if args.store:
+            return deal_store.sales_from_store(args.store)
+    except (deal_store.StoreError, OSError, subprocess.SubprocessError) as e:
+        raise TermsError(str(e))
+    if not args.deals:
+        raise TermsError("name the sales: --deals FILE, --exports DIR of `deal export` files, or --store HOME")
+    return load_deals(args.deals)
 
 
 def result_bytes(result):
@@ -237,7 +253,7 @@ def next_run_dir(ws, pack_id):
 
 def cmd_run(args):
     source = load_pack(args.src)
-    deals = load_deals(args.deals)
+    deals = load_sales(args)
     ws = workspace_of(args)
     generated_at = args.generated_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = build_result(source, deals, generated_at, args.dry_run)
@@ -353,7 +369,10 @@ def main(argv):
             p.add_argument("--workspace")
     p = sub.add_parser("run")
     p.add_argument("src")
-    p.add_argument("--deals", required=True, help="JSON file of sales: a list, or {\"trades\": [...]}")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--deals", help="JSON file of sales: a list, or {\"trades\": [...]}")
+    g.add_argument("--exports", help="directory of `capsulectl deal export` files, one per deal, named <deal id>.json")
+    g.add_argument("--store", help="a seller's store home (XDG_HOME): reads its closed deals through capsulectl")
     p.add_argument("--dry-run", action="store_true", help="rehearsal: stamp the page, switch nothing on")
     p.add_argument("--workspace")
     p.add_argument("--generated-at")
