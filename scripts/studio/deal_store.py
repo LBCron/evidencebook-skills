@@ -58,8 +58,10 @@ def sale_from_records(deal_id, records):
         if not isinstance(rec, dict):
             continue
         body = rec.get("body") if isinstance(rec.get("body"), dict) else {}
-        kind = rec.get("type")
         x = rec.get("x-deal-v0") if isinstance(rec.get("x-deal-v0"), dict) else {}
+        # typed records carry `type`; x-deal-v0 records (evidence, baseline, close,
+        # detail_change) carry none, their kind is x-deal-v0.record_type
+        kind = rec.get("type") or x.get("record_type")
         if x.get("record_type") == "detail_change":
             # The seller moved a term after the commit: the price actually charged.
             terms = body.get("terms") if isinstance(body.get("terms"), dict) else {}
@@ -123,8 +125,9 @@ def sales_from_store(home, profile="deal", capsulectl="capsulectl", run=subproce
     except ValueError as e:
         raise StoreError(f"deal list --json is not JSON: {e}")
     items = listing.get("deals", listing) if isinstance(listing, dict) else listing
-    ids = [i["id"] for i in items if isinstance(i, dict) and i.get("kind") == "deal"
-           and (i.get("status") in (None, "closed")) and isinstance(i.get("id"), str) and i["id"]]
+    # `deal list --json` entries: {"deal_id": ..., "kind": "deal", "state": "closed", ...}
+    ids = [i.get("deal_id") for i in items if isinstance(i, dict) and i.get("kind") == "deal"
+           and i.get("state") == "closed" and isinstance(i.get("deal_id"), str) and i["deal_id"]]
     if any("/" in d or ".." in d for d in ids):
         raise StoreError("a deal id in the listing is not a plain id")
     if not ids:

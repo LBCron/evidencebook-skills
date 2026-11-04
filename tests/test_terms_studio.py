@@ -222,8 +222,8 @@ def seller_export(n, offer, commit, paid="2026-11-04T10:00:01Z", delivered="2026
                                              "attempted": {"action": "commit", "amount_minor": 175}}))
     else:
         out.append(rec("action-record/v0", {"action": "commit", "amount_minor": commit}))
-    out += [rec("evidence", {"source": "x402_settle_response"}, paid),
-            {"type": "evidence", "body": {"source": "seller_handoff"}, "x-deal-v0": {"at": delivered}},
+    out += [{"body": {"source": "x402_settle_response"}, "x-deal-v0": {"record_type": "evidence", "at": paid}},
+            {"body": {"source": "seller_handoff"}, "x-deal-v0": {"record_type": "evidence", "at": delivered}},
             rec("close", {})]
     return out
 
@@ -416,8 +416,8 @@ class Hardening(unittest.TestCase):
         def run(argv, **kw):
             calls.append(argv)
             if "list" in argv:
-                out = json.dumps([{"id": "d1", "kind": "deal", "status": "closed"}, {"id": "s1", "kind": "sale"},
-                                  {"id": "d2", "kind": "deal", "status": "open"}])
+                out = json.dumps([{"deal_id": "d1", "kind": "deal", "state": "closed"}, {"deal_id": "s1", "kind": "sale", "state": "closed"},
+                                  {"deal_id": "d2", "kind": "deal", "state": "open"}])
             else:
                 pathlib.Path(argv[argv.index("--output") + 1]).write_text(json.dumps(seller_export(1, 150, 150)))
                 out = ""
