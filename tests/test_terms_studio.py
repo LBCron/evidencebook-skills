@@ -304,6 +304,19 @@ class RulesChecker(unittest.TestCase):
         self.assertTrue(pathlib.Path(self.pin["command"][0]).is_absolute())
         self.assertTrue(pathlib.Path(self.pin["command"][1]).is_absolute())
 
+    def test_the_pin_states_the_packs_own_kind(self):
+        self.assertEqual(self.pin["kind"], "deal")
+        # a pack of another kind states that kind, never "deal"
+        other = terms.rules_checker_pin({"scope": {"kind": "live"}}, pathlib.Path(self.tmp.name) / "c.json", "0" * 64)
+        self.assertEqual(other["kind"], "live")
+        # and publish refuses a non-deal pack before it writes any pin
+        text = SOURCE.read_text().replace("kind: deal", "kind: live")
+        path = pathlib.Path(self.tmp.name) / "live.yaml"
+        path.write_text(text)
+        ws = pathlib.Path(self.tmp.name) / "ws2"
+        self.assertEqual(call("publish", path, "--workspace", ws)[0], 1)
+        self.assertEqual(list(ws.rglob("rules-checker.json")) if ws.exists() else [], [])
+
     def test_the_checker_runs_alone_as_capsulectl_copies_it(self):
         import shutil
         lone = self.tmp_path / "lone" / "terms-checker"
