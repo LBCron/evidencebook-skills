@@ -66,7 +66,7 @@ def main(argv):
             if f["verdict"] == "fail":
                 f["disposition"] = "ask"
     verdict = "deny" if failed else ("not_evaluable" if all(f["verdict"] in ("not_evaluable", "not_applicable") for f in findings) and any(f["verdict"] == "not_evaluable" for f in findings) else "allow")
-    print(json.dumps({"schema": "external-check-result/v0", "ruleset_id": pack["contract_ref"],
+    print(json.dumps({"schema": "external-check-result/v0", "ruleset_id": pack["contract_ref"].replace("@", "/"),
                       "definition_digest": pack["definition_digest"], "verdict": verdict, "tier": "recomputed",
                       "grade": "self-attested", "findings": findings}))
     return 0
