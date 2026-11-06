@@ -38,8 +38,10 @@ reads are only read. With no --workspace or $TERMS_WORKSPACE, a SRC inside a pac
 A Result is Evidence Result v0 (scripts/result_v0.py), one claim per sale per
 row, `plan_ref` and `dataset_ref` (section 7.3: the digests of plan.json and dataset.json,
 written beside result.json; scripts/studio/dataset_plan.py), a `coverage_report` (per row,
-the sales as records: backfilled_count counts the sales a deal export or --deals marks backfilled,
-so a Result over backfill alone reads as imported on the report page), plus two document members: `x-pack` (the pack's id, version, definition
+the sales as records: only sales that state their provenance are counted, backfilled_count the ones a
+deal export or --deals marks `backfilled: true`, contemporaneous_count the ones marked `contemporaneous: true`;
+a sale stating neither is named in x-pack.provenance_unknown, so a Result over backfill alone reads as
+imported on the report page), plus two document members: `x-pack` (the pack's id, version, definition
 digest and each row's digest) and, on a rehearsal, `x-rehearsal: true`. The page
 carries result.json's exact bytes in a <script type="application/json">, and
 states their SHA-256 beside them; `terms verify` checks the page against itself
@@ -183,14 +185,23 @@ def result_bytes(result):
     return json.dumps(result, sort_keys=True, ensure_ascii=True, separators=(",", ":")).replace("</", "<\\/").encode()
 
 
+def provenance(deal):
+    """"backfilled" or "contemporaneous" when the sale states one (and only one), else None: unknown."""
+    stated = [m for m in ("backfilled", "contemporaneous") if deal.get(m) is True]
+    return stated[0] if len(stated) == 1 else None
+
+
 def coverage_report(contract_ref, rows, deals, evidence, claims):
     """The Result's `coverage_report` (coverage-report/v0, the members Evidence Result v0 already
-    has): per pack row, one source `sale-records` whose records are the sales. A sale is backfilled
-    when it says `backfilled: true` (deal_store.sale_from_records); every other sale counts as
-    contemporaneous, so a Result reads as backfill-only only when no sale is anything else.
-    Terms data names no producer, so each sale is an unattributed record and independence is
-    unmet: the row is UNKNOWN, never SATISFIED on a producer count nobody has."""
-    backfilled = sum(1 for d in deals if d.get("backfilled") is True)
+    has): per pack row, one source `sale-records` whose records are the sales that state their
+    provenance (`backfilled: true` or `contemporaneous: true`, deal_store.sale_from_records). The
+    spec needs contemporaneous + backfilled == record_count, so a sale with no stated provenance is
+    not a record of this source and is never counted as recorded at the time; build_result names it
+    in x-pack.provenance_unknown. Terms data names no producer, so each counted sale is an
+    unattributed record and independence is unmet: the row is UNKNOWN, never SATISFIED on a
+    producer count nobody has."""
+    stated = [d for d in deals if provenance(d)]
+    backfilled = sum(1 for d in stated if provenance(d) == "backfilled")
     claim_ids = {}
     for c in claims:
         claim_ids.setdefault(c["requirement_ref"], []).append(c["id"])
@@ -200,12 +211,12 @@ def coverage_report(contract_ref, rows, deals, evidence, claims):
             "requirement_ref": r["id"], "obligation_refs": [], "status": "UNKNOWN", "sufficiency": "UNKNOWN",
             "claim_ids": claim_ids.get(r["id"], []),
             "sources": [{
-                "source": "sale-records", "status": "SATISFIED", "record_count": len(deals),
-                "contemporaneous_count": len(deals) - backfilled, "backfilled_count": backfilled,
+                "source": "sale-records", "status": "SATISFIED" if stated else "NOT_FOUND", "record_count": len(stated),
+                "contemporaneous_count": len(stated) - backfilled, "backfilled_count": backfilled,
                 "duplicates_collapsed": 0, "producer_count": 0,
-                "evidence": [{"digest": evidence[d["deal_id"]], "digest_alg": "SHA-256"} for d in deals]}],
+                "evidence": [{"digest": evidence[d["deal_id"]], "digest_alg": "SHA-256"} for d in stated]}],
             "independence": {"required_producers": 1, "independent_producers": 0, "correlated_records": 0,
-                             "unattributed_records": len(deals), "producer_basis": "none", "met": False},
+                             "unattributed_records": len(stated), "producer_basis": "none", "met": False},
             "gaps": []})
     return {"spec_version": "coverage-report/v0", "contract_ref": contract_ref, "requirements": requirements,
             "summary": {"requirements": len(requirements), "satisfied": 0, "with_gaps": 0, "gaps": 0,
@@ -233,6 +244,7 @@ def build_result(source, deals, generated_at, rehearsal):
         "definition_digest": compiled["definition_digest"],
         "rows": [{"id": r["id"], "statement": r["statement"], "row_digest": r["row_digest"]} for r in rows],
         "sales": dataset_plan.sale_digests(deals),
+        "provenance_unknown": sorted(d["deal_id"] for d in deals if not provenance(d)),
     }
     plan, dataset = dataset_plan.build(merged["x-pack"]["sales"])
     merged["plan_ref"] = dataset_plan.digest_ref(dataset_plan.digest_of(plan))
@@ -270,7 +282,10 @@ def by_deal(result):
 def backfill_only(result):
     """Whether the Result rests on backfill alone, read as capsule-viewer#303 reads it: at least one
     record, and every source in `coverage_report.requirements[].sources[]` has contemporaneous_count 0
-    and backfilled_count equal to record_count. Anything else, a missing report included, is not."""
+    and backfilled_count equal to record_count, and no sale is named in x-pack.provenance_unknown (a
+    sale of unknown provenance is not all backfilled). Anything else, a missing report included, is not."""
+    if (result.get("x-pack") or {}).get("provenance_unknown"):
+        return False
     records = 0
     for requirement in (result.get("coverage_report") or {}).get("requirements", []):
         for s in requirement.get("sources", []):

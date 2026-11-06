@@ -19,6 +19,9 @@ with `at` (or `x-deal-v0.at`), `type` and `body`. Per deal:
     delivered_at    `at` of the evidence record with source seller_handoff
     backfilled      true when every record carries provenance_mode.mode "backfilled"
                     (AAC 5.3(bis)): the sale was imported, not recorded as it happened
+    contemporaneous true when every record carries provenance_mode.mode "contemporaneous":
+                    the sale was recorded as it happened. A sale whose records state neither
+                    (or mix modes) carries neither member: its provenance is unknown
 
 A fact the records do not carry stays absent, and the fold reports not_evaluable.
 """
@@ -91,7 +94,9 @@ def sale_from_records(deal_id, records):
             elif body.get("source") == "seller_handoff" and _at(rec):
                 sale["delivered_at"] = _at(rec)
     if modes and all(m == "backfilled" for m in modes):
-        sale["backfilled"] = True  # absent otherwise, so a sale's digest only changes when it is backfill
+        sale["backfilled"] = True  # absent otherwise, so a sale's digest only changes when it states a mode
+    elif modes and all(m == "contemporaneous" for m in modes):
+        sale["contemporaneous"] = True
     sale.pop("commit_seen", None)
     if changed_price is not None:
         sale["accepted_price"] = changed_price
