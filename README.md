@@ -59,9 +59,10 @@ way.
   `inference_deals.py`: that one reads a Mesh node's sealed capsule records
   over whole closed periods, this one a flat record per sale, so they share no
   inputs and no code. Terms Pack
-  Studio's `scripts/studio/terms` (`lint`, `test`, `run --dry-run`, `verify`,
+  Studio's `scripts/studio/terms` (`init`, `readiness`, `lint`, `test`, `run --dry-run`, `verify`,
   `compare`, `publish`) and the [`terms-pack-author`](skills/terms-pack-author/SKILL.md)
-  skill author, rehearse and publish it; `run` writes only into the workspace it is given.
+  skill author, rehearse and publish it; `run` writes only into the workspace it is given (`init` starts a workspace pack from past
+  sales with a field census and a readiness table of each term; `lint` and `test` refresh that table).
   Every pack is one `pack-source.yaml`, told apart by `scope.kind` (admission, deal,
   conduct, live, and the report kind, `after_the_fact`, which is also what an absent
   scope means). [`schemas/pack-source.schema.json`](schemas/pack-source.schema.json)
