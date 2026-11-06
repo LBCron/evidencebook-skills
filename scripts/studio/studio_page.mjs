@@ -6,7 +6,13 @@ import { join, resolve } from "node:path";
 import { readFileSync } from "node:fs";
 
 const viewer = resolve(process.argv[2]);
-const { studioViewDocument } = await import(pathToFileURL(join(viewer, "dist", "index.js")).href);
+let studioViewDocument;
+try {
+  ({ studioViewDocument } = await import(pathToFileURL(join(viewer, "dist", "index.js")).href));
+} catch (e) {
+  console.error(`${viewer} could not be loaded: ${e instanceof Error ? e.message : e}`);
+  process.exit(4);
+}
 if (typeof studioViewDocument !== "function") {
   console.error(`${viewer} has no studioViewDocument: it is a capsule-viewer older than the Studio page`);
   process.exit(3);

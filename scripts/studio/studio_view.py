@@ -1,7 +1,7 @@
 """The Studio page of a Terms Pack workspace (evidencebook-skills#143, capsule-viewer#291).
 
 `build(ws, folder)` makes the `studio-view/v0` input (capsule-viewer docs/design/studio-page.md
-section 2) from files `terms` verbs already wrote, and from nothing else:
+section 2) from files `terms` verbs already wrote, and from nothing else (the pack's title is read from its pack-source.yaml):
 
     packs/<id>/workspace.json   the dataset digest, the latest run (`last_run`)
     runs/<id>/<n>/result.json   `x-pack.definition_digest`, the pack digest of that run
@@ -37,12 +37,16 @@ class StudioError(ValueError):
     """A refusal, said in words (terms.main prints it like a TermsError)."""
 
 
-def _title(folder):
-    try:
-        title = yaml.safe_load((folder / "pack-source.yaml").read_text(encoding="utf-8")).get("title")
-    except (OSError, yaml.YAMLError, AttributeError):
+def _title(ws, folder):
+    source = folder / "pack-source.yaml"
+    if not source.exists():
         return None
-    return title if isinstance(title, str) and title else None
+    try:
+        title = yaml.safe_load(_within(ws, source).read_text(encoding="utf-8")).get("title")
+    except (OSError, yaml.YAMLError, AttributeError, StudioError):
+        return None
+    # the renderer refuses a title over 200 characters, and one pack's title must not block every pack's page
+    return title if isinstance(title, str) and 0 < len(title) <= 200 else None
 
 
 def _within(ws, path):
@@ -55,12 +59,18 @@ def _within(ws, path):
 
 def _entry(ws, folder):
     """The switch entry of the pack in `folder`, or None when it has no run."""
+    if (folder / "workspace.json").exists():
+        _within(ws, folder / "workspace.json")
     st = wsm.state(folder)
-    last = st.get("last_run")
+    last = st.get("last_run") if isinstance(st, dict) else None
     if not isinstance(last, dict) or not last.get("run"):
         return None
+    if not isinstance(last["run"], str):
+        raise StudioError(f"{folder / 'workspace.json'} names a last run that is not a folder: `terms run` the pack {folder.name} again")
     run = _within(ws, ws / last["run"])
     for name in ("result.json", "report.html"):
+        if (run / name).exists():
+            _within(ws, run / name)
         if not (run / name).is_file():
             raise StudioError(f"{run / name} is missing: `terms run` the pack {folder.name} again")
     try:
@@ -72,7 +82,7 @@ def _entry(ws, folder):
         raise StudioError(f"{folder / 'workspace.json'} names no dataset digest: `terms run` the pack {folder.name} over its sales")
     entry = {"pack_id": folder.name, "pack_digest": digest, "page": (run / "report.html").relative_to(ws).as_posix(),
              "shared": {"kind": SHARED_KIND, "digest": dataset["sales_digest"]}}
-    title = _title(folder)
+    title = _title(ws, folder)
     if title:
         entry["title"] = title
     return entry
@@ -101,7 +111,7 @@ def build(ws, folder, current_digest=None):
             _within(ws, folder / name)
     table = wsm.read_json(folder / "readiness.json", None)
     if not isinstance(table, dict):
-        raise StudioError(f"{folder / 'readiness.json'} is missing: `terms readiness` writes it")
+        raise StudioError(f"{folder / 'readiness.json'} is missing: `terms readiness` writes it for a pack `terms init` made")
     return {"schema": SCHEMA, "active": folder.name, "packs": packs, "readiness": table,
             "history": wsm.history(folder)}
 
@@ -116,11 +126,20 @@ def render(view, viewer):
     node = shutil.which("node")
     if not node:
         raise StudioError("node is not installed; the Studio page is drawn by capsule-viewer (Node 20 or later)")
-    done = subprocess.run([node, str(BRIDGE), str(viewer)], input=json.dumps(view).encode(),
-                          capture_output=True, timeout=60)
+    try:
+        done = subprocess.run([node, str(BRIDGE), str(viewer)], input=json.dumps(view).encode(),
+                              capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise StudioError(f"capsule-viewer at {viewer} did not draw the page: {e}")
+    err = done.stderr.decode(errors="replace").strip()
+    if done.returncode == 2:  # the bridge's own: StudioViewRefused, said in words
+        raise StudioError("capsule-viewer refused the studio input: " + err)
     if done.returncode != 0:
-        raise StudioError("capsule-viewer refused the studio input: " + done.stderr.decode(errors="replace").strip())
-    return done.stdout.decode()
+        raise StudioError(f"capsule-viewer at {viewer} could not draw the page: {err[:500]}")
+    page = done.stdout.decode()
+    if snapshot(page) is None or snapshot(page)[2] is None:
+        raise StudioError(f"capsule-viewer at {viewer} drew a page without the studio snapshot; it is not a build this verb reads")
+    return page
 
 
 _SNAPSHOT = re.compile(r'<code data-snapshot-digest>([0-9a-f]{64})</code></p>'

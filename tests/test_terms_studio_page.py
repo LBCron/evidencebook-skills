@@ -102,6 +102,15 @@ class Input(Base):
         with self.assertRaisesRegex(studio_view.StudioError, "outside the workspace"):
             studio_view.build(self.ws, self.src.parent)
 
+    def test_a_file_linked_from_outside_the_workspace_is_refused(self):
+        run = pathlib.Path(self.run_pack(self.src, "--dry-run")["run"])
+        outside = pathlib.Path(self.tmp.name) / "outside.json"
+        outside.write_bytes((run / "result.json").read_bytes())
+        (run / "result.json").unlink()
+        (run / "result.json").symlink_to(outside)
+        with self.assertRaisesRegex(studio_view.StudioError, "outside the workspace"):
+            studio_view.build(self.ws, self.src.parent)
+
     def test_verify_answers_a_corrupt_snapshot_in_words(self):
         for body in ("[]", "null", "{not json"):
             page = pathlib.Path(self.tmp.name) / "p.html"
@@ -109,6 +118,16 @@ class Input(Base):
                             % ("0" * 64, body))
             code, res = call("verify", page)
             self.assertEqual((code, res["verified"], res["scope"]), (1, False, "snapshot"), body)
+
+    def test_one_siblings_bad_state_is_a_refusal_in_words_not_a_traceback(self):
+        other = self.pack("late")
+        self.run_pack(self.src, "--dry-run")
+        self.run_pack(other, "--dry-run")
+        (other.parent / "workspace.json").write_text("[]")
+        self.assertEqual(studio_view.build(self.ws, self.src.parent)["active"], "stickers")  # an unreadable sibling is skipped, not fatal
+        (other.parent / "workspace.json").write_text('{"last_run": {"run": 5}}')
+        with self.assertRaisesRegex(studio_view.StudioError, "not a folder"):
+            studio_view.build(self.ws, self.src.parent)
 
     def test_no_viewer_named_is_said_in_words(self):
         self.run_pack(self.src)
@@ -165,6 +184,9 @@ class Page(Base):
 
     def test_an_edit_makes_a_new_digest_and_the_loop_says_so_not_yet(self):
         self.run_pack(self.src, "--dry-run")
+        code, res = call("publish", self.src, "--workspace", self.ws)
+        self.assertEqual(code, 0, res)  # the first digest is published; the edited one is not
+        self.assertIn('data-stage="switched_on" data-state="done"', pathlib.Path(self.studio()["page"]).read_text())
         text = self.src.read_text()
         self.src.write_text(text.replace("pack_version: 0.1.0", "pack_version: 0.1.1").replace("within 2 days", "within 3 days").replace("delivered_within_days(2)", "delivered_within_days(3)"))
         self.run_pack(self.src)  # a real run under the new digest

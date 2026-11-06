@@ -31,7 +31,7 @@ writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html,plan.json,datas
 writes published/<pack_id>/<digest>/; both also keep packs/<pack_id>/{workspace.json,
 history.jsonl,history/} (the dataset, the last run, one line per pack digest; see
 scripts/studio/workspace.py), `checkout` overwrites SRC (inside the workspace) and
-`keep-transcript` writes packs/<pack_id>/private/. --deals and the Results `compare`
+`keep-transcript` writes packs/<pack_id>/private/ and `studio` writes studio-view.json and studio.html at the workspace root. --deals and the Results `compare`
 reads are only read. With no --workspace or $TERMS_WORKSPACE, a SRC inside a pack folder
 `init` made names its own workspace.
 
@@ -533,7 +533,7 @@ def cmd_verify(args):
         return out({"verified": False, "issues": [f"cannot read {args.page}: {e}"]}, 1)
     m = _SCRIPT.search(text)
     if not m and studio_view.snapshot(text) is not None:
-        return verify_studio(args.page, text)
+        return verify_studio(text)
     if not m:
         return out({"verified": False, "issues": ["the page carries no terms-result record"]}, 1)
     declared, rehearsal, pack_digest, body = m.groups()
@@ -561,7 +561,7 @@ def cmd_verify(args):
                 "result_sha256": declared}, 1 if issues else 0)
 
 
-def verify_studio(page, text):
+def verify_studio(text):
     """A Studio page checks against itself and nothing more: its embedded input against the digest it prints."""
     declared, actual, view = studio_view.snapshot(text)
     issues = [] if declared == actual else ["the embedded studio input does not match the digest the page states"]
