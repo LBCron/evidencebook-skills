@@ -681,8 +681,8 @@ def pack_folder(args):
 
 
 def cmd_studio(args):
+    inside(workspace_of(args, create=False), pathlib.Path(args.src))  # before any read: a link out of the workspace is refused
     ws, path, folder = pack_folder(args)
-    inside(ws, path)  # SRC is read through its link target: a link out of the workspace is refused
     try:
         current = deal_pack.compiled(load_pack(path))["definition_digest"]
     except TermsError as e:

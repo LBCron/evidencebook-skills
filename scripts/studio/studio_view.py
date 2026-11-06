@@ -76,12 +76,12 @@ def _entry(ws, folder):
             _within(ws, run / name)
         if not (run / name).is_file():
             raise StudioError(f"{run / name} is missing: `terms run` the pack {folder.name} again")
-    raw = (run / "result.json").read_bytes()
     try:
+        raw = (run / "result.json").read_bytes()
         result = json.loads(raw)
         digest = result["x-pack"]["definition_digest"]
         refs = {k: result[k]["digest"] for k in ("dataset_ref", "plan_ref")}
-    except (ValueError, KeyError, TypeError) as e:
+    except (OSError, ValueError, KeyError, TypeError) as e:
         raise StudioError(f"{run / 'result.json'} is not a terms Result that names its dataset and plan: {e}; "
                           f"`terms run` the pack {folder.name} again")
     entry = {"pack_id": folder.name, "pack_digest": digest, "page": (run / "report.html").relative_to(ws).as_posix(),

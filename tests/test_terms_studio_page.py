@@ -119,9 +119,18 @@ class Input(Base):
         outside.write_bytes(self.src.read_bytes())
         self.src.unlink()
         self.src.symlink_to(outside)
+        outside.write_text("title: [unclosed SECRET-MARKER")  # unparsable: a read would put its text in the error
         code, res = call("studio", self.src, "--workspace", self.ws, "--viewer", "/nowhere")
         self.assertEqual(code, 1)
         self.assertIn("outside the workspace", res["error"])
+        self.assertNotIn("SECRET-MARKER", res["error"])
+
+    def test_an_unreadable_result_is_a_refusal_not_a_traceback(self):
+        run = pathlib.Path(self.run_pack(self.src, "--dry-run")["run"])
+        (run / "result.json").chmod(0)
+        self.addCleanup((run / "result.json").chmod, 0o644)
+        with self.assertRaisesRegex(studio_view.StudioError, "not a terms Result"):
+            studio_view.build(self.ws, self.src.parent)
 
     def test_verify_answers_a_corrupt_snapshot_in_words(self):
         for body in ("[]", "null", "{not json"):
