@@ -5,9 +5,12 @@
     terms readiness SRC
     terms lint    SRC   (any kind: admission, deal, conduct, live, report)
     terms test    SRC [--engine PATH [--engine-commit SHA]]
-    terms run     SRC (--deals FILE | --exports DIR | --store HOME) [--dry-run] [--workspace DIR]
+    terms run     SRC [--deals FILE | --exports DIR | --store HOME] [--dry-run] [--workspace DIR]   (no sales flag: the dataset the pack's workspace remembers)
     terms verify  PAGE
-    terms compare A B
+    terms compare A B [--workspace DIR]      (A, B: a run, or a pack digest from `history`)
+    terms history SRC [--workspace DIR]      (dataset, last run, readiness, one line per pack digest)
+    terms checkout SRC DIGEST [--force] [--workspace DIR]   (undo: restore that digest's source; then run and compare)
+    terms keep-transcript SRC FILE [--workspace DIR]   (opt-in, private; no verb keeps a transcript otherwise)
     terms publish SRC [--workspace DIR]
 
 SRC is a pack-source.yaml with `scope.kind: deal` (scripts/deal_pack.py). Every
@@ -22,8 +25,12 @@ make, and `run` makes it only inside the workspace it is given.
 
 The workspace (default ~/studio, or $TERMS_WORKSPACE) is the only place a verb
 writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html} and `publish`
-writes published/<pack_id>/<digest>/. SRC, --deals and the Results `compare`
-reads are only read.
+writes published/<pack_id>/<digest>/; both also keep packs/<pack_id>/{workspace.json,
+history.jsonl,history/} (the dataset, the last run, one line per pack digest; see
+scripts/studio/workspace.py), `checkout` overwrites SRC (inside the workspace) and
+`keep-transcript` writes packs/<pack_id>/private/. --deals and the Results `compare`
+reads are only read. With no --workspace or $TERMS_WORKSPACE, a SRC inside a pack folder
+`init` made names its own workspace.
 
 A Result is Evidence Result v0 (scripts/result_v0.py), one claim per sale per
 row, plus two document members: `x-pack` (the pack's id, version, definition
@@ -63,6 +70,7 @@ import readiness  # noqa: E402
 import result_v0  # noqa: E402
 import transaction  # noqa: E402
 import two_case  # noqa: E402
+import workspace as wsm  # noqa: E402
 
 DEFAULT_WORKSPACE = "~/studio"
 
@@ -94,9 +102,18 @@ def lint_issues(source):
     return pack_compile.validate_source(source)
 
 
-def workspace_of(args):
-    ws = pathlib.Path(args.workspace or os.environ.get("TERMS_WORKSPACE") or DEFAULT_WORKSPACE).expanduser()
-    ws.mkdir(parents=True, exist_ok=True)
+def workspace_of(args, create=True):
+    """The workspace; a verb that only reads it (create=False) never makes the folder."""
+    named = args.workspace or os.environ.get("TERMS_WORKSPACE")
+    src = getattr(args, "src", None)
+    if not named and src:
+        # a pack folder `init` made names its workspace: <ws>/packs/<id>/pack-source.yaml
+        folder = pathlib.Path(src).resolve().parent
+        if folder.parent.name == "packs" and (folder / "workspace.json").is_file():
+            named = str(folder.parent.parent)
+    ws = pathlib.Path(named or DEFAULT_WORKSPACE).expanduser()
+    if create:
+        ws.mkdir(parents=True, exist_ok=True)
     return ws.resolve()
 
 
@@ -126,6 +143,16 @@ def load_deals(path):
     if len({d["deal_id"] for d in deals}) != len(deals):
         raise TermsError("two sales share a deal_id")
     return deals
+
+
+def stored_dataset(args, ws, pack_id):
+    """With no source flag, `run` reads the dataset the pack's workspace remembers (init or the last run)."""
+    if args.deals or args.exports or args.store:
+        return
+    ref = wsm.state(inside(ws, ws / "packs" / pack_id)).get("dataset")
+    if not isinstance(ref, dict) or ref.get("kind") not in ("deals", "exports", "store") or not ref.get("path"):
+        return
+    setattr(args, ref["kind"], str(ws / ref["path"]))  # an absolute path stays itself
 
 
 def load_sales(args):
@@ -303,7 +330,7 @@ def test_deal(source):
     return out({"passed": not failed, "kind": "deal", "rows": results}, 1 if failed else 0)
 
 
-PACK_FILES = ("pack-source.yaml", "census.json", "candidates.json", "readiness.json")
+PACK_FILES = ("pack-source.yaml", "census.json", "candidates.json", "readiness.json", "workspace.json", "history.jsonl")
 
 
 def refresh_readiness(src, sales=None, ws=None):
@@ -397,11 +424,13 @@ def cmd_init(args):
     if issues:
         raise TermsError("the proposed pack does not lint: " + "; ".join(issues))
     census_doc = readiness.census(sales)
+    ref = wsm.dataset_ref(args, sales, ws)  # may refuse (data JCS cannot digest): before anything is written
     (folder / "pack-source.yaml").write_text(yaml.safe_dump(source, sort_keys=False, width=100), encoding="utf-8")
     (folder / "census.json").write_text(json.dumps(census_doc, indent=2) + "\n")
     (folder / "candidates.json").write_text(json.dumps(readiness.propose_candidates(), indent=2) + "\n")
     table = readiness_table(folder, source)
     (folder / "readiness.json").write_text(json.dumps(table, indent=2) + "\n")
+    wsm.save_state(folder, {"pack_id": args.pack_id, "dataset": ref, "last_run": None})
     return out({"pack": str(folder / "pack-source.yaml"), "census": str(folder / "census.json"),
                 "readiness": str(folder / "readiness.json"), "records": census_doc["records"],
                 "fields": len(census_doc["fields"]), "counts": table["counts"], "terms": table["terms"]})
@@ -418,8 +447,9 @@ def next_run_dir(ws, pack_id):
 
 def cmd_run(args):
     source = load_pack(args.src)
-    deals = load_sales(args)
     ws = workspace_of(args)
+    stored_dataset(args, ws, source["pack_id"])
+    deals = load_sales(args)
     generated_at = args.generated_at or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     result = build_result(source, deals, generated_at, args.dry_run)
     raw = result_bytes(result)
@@ -427,8 +457,19 @@ def cmd_run(args):
     (run / "result.json").write_bytes(raw)
     (run / "report.html").write_text(page_html(result, raw), encoding="utf-8")
     met, total = came_through(result)
+    folder = inside(ws, ws / "packs" / source["pack_id"])
+    folder.mkdir(parents=True, exist_ok=True)
+    rel = run.relative_to(ws).as_posix()  # relative, so the folder can move or be mounted elsewhere
+    wsm.record(folder, args.src, result["x-pack"]["definition_digest"], source["pack_version"], generated_at,
+               run=rel, rehearsal=args.dry_run)
+    st = wsm.state(folder)
+    ref = wsm.dataset_ref(args, deals, ws) or st.get("dataset")
+    changed = bool(st.get("dataset")) and st["dataset"].get("sales_digest") != ref.get("sales_digest")
+    st.update(pack_id=source["pack_id"], dataset=ref,
+              last_run={"run": rel, "digest": result["x-pack"]["definition_digest"], "at": generated_at})
+    wsm.save_state(folder, st)
     refresh_or_say(args.src, deals, ws)
-    return out({"run": str(run), "result": str(run / "result.json"), "page": str(run / "report.html"),
+    return out({"dataset_changed": changed, "run": str(run), "result": str(run / "result.json"), "page": str(run / "report.html"),
                 "rehearsal": bool(args.dry_run), "came_through": met, "sales": total,
                 "missed": undecided_or_missed(result, "not_met"),
                 "could_not_decide": undecided_or_missed(result, "not_evaluable"),
@@ -473,8 +514,12 @@ def cmd_verify(args):
                 "result_sha256": declared}, 1 if issues else 0)
 
 
-def read_result(arg):
+def read_result(arg, ws=None):
     path = pathlib.Path(arg)
+    if ws is not None and not path.is_absolute() and (ws / path).exists():
+        path = ws / path  # a run as `history` prints it, relative to the workspace
+    elif ws is not None and not path.exists():
+        path = wsm.run_of_digest(ws, arg)
     if path.is_dir():
         path = path / "result.json"
     try:
@@ -486,7 +531,8 @@ def read_result(arg):
 
 
 def cmd_compare(args):
-    a, b = read_result(args.a), read_result(args.b)
+    ws = workspace_of(args, create=False)
+    a, b = read_result(args.a, ws), read_result(args.b, ws)
     ta, tb = by_deal(a), by_deal(b)
     if set(ta) != set(tb):
         raise TermsError("the two runs are over different sales; compare runs over the same sales")
@@ -546,12 +592,69 @@ def cmd_publish(args):
     # also sit under a trusted plugin root): the checker, the compiled pack it reads, the digest.
     pin = rules_checker_pin(source, dest / "compiled.json", compiled["definition_digest"])
     (dest / "rules-checker.json").write_text(json.dumps(pin, indent=2) + "\n")
+    folder = inside(ws, ws / "packs" / source["pack_id"])
+    folder.mkdir(parents=True, exist_ok=True)
+    wsm.record(folder, args.src, compiled["definition_digest"], source["pack_version"],
+               wsm.now_utc().strftime("%Y-%m-%dT%H:%M:%SZ"), published=dest.relative_to(ws).as_posix())
     return out({"pack_id": source["pack_id"], "pack_version": source["pack_version"],
                 "definition_digest": compiled["definition_digest"], "published": str(dest),
                 "compiled": str(dest / "compiled.json"), "rules_checker_pin": str(dest / "rules-checker.json"),
                 "in_force": False,
                 "install": shlex.join(["capsulectl", "profile", "update", "--profile", "deal", "--rules-checker",
                                        str(dest / "rules-checker.json")])})
+
+
+def pack_folder(args):
+    """(workspace, SRC, the pack's folder): history lives at packs/<pack_id> wherever SRC sits, as `run` writes it."""
+    ws = workspace_of(args, create=False)
+    path = pathlib.Path(args.src).resolve()
+    try:
+        pack_id = pack_compile.load_source(path.read_text())["pack_id"]
+    except (OSError, yaml.YAMLError, KeyError, TypeError) as e:
+        # a source broken by an edit can still be restored when it sits in its own pack folder
+        if path.parent.parent == ws / "packs":
+            pack_id = path.parent.name
+        else:
+            raise TermsError(f"cannot read a pack_id from {args.src}: {e}")
+    if not isinstance(pack_id, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*", pack_id):
+        raise TermsError(f"{args.src} has no usable pack_id")
+    return ws, path, inside(ws, ws / "packs" / pack_id)
+
+
+def cmd_history(args):
+    ws, path, folder = pack_folder(args)
+    st = wsm.state(folder)
+    table = readiness.read_json(folder / "readiness.json", None)
+    return out({"pack": str(path), "workspace": str(ws), "dataset": st.get("dataset"), "last_run": st.get("last_run"),
+                "readiness": table["counts"] if isinstance(table, dict) and "counts" in table else None,
+                "history": wsm.history(folder)})
+
+
+def cmd_checkout(args):
+    if pathlib.Path(args.src).is_symlink():
+        raise TermsError(f"{args.src} is a link; refusing to write through it")
+    ws, path, folder = pack_folder(args)
+    inside(ws, path)  # the one file checkout overwrites
+    try:
+        current = deal_pack.compiled(load_pack(args.src))["definition_digest"]
+    except TermsError:
+        if not args.force:
+            raise TermsError(f"{args.src} does not lint, so its changes cannot be told from a recorded digest; pass --force to discard them")
+        current = None
+    entry = wsm.checkout(folder, path, args.digest, current, args.force)
+    refresh_or_say(args.src, None, ws)
+    out_ = {"restored": entry["digest"], "version": entry["version"], "pack": str(path), "replaced": current}
+    ran = current and any(e["digest"] == current and e.get("run") for e in wsm.history(folder))
+    where = f" --workspace {shlex.quote(str(ws))}"
+    out_["next"] = f"terms run {shlex.quote(args.src)}{where}" + (
+        f", then terms compare {current[:12]} {entry['digest'][:12]}{where}" if ran else "")
+    return out(out_)
+
+
+def cmd_keep_transcript(args):
+    ws, path, folder = pack_folder(args)
+    folder.mkdir(parents=True, exist_ok=True)
+    return out({"kept": str(wsm.keep_transcript(folder, args.file, wsm.now_utc())), "private": True})
 
 
 def main(argv):
@@ -567,8 +670,8 @@ def main(argv):
             p.add_argument("--engine-commit", help="refuse an engine not built from this commit (a prefix is enough)")
     p = sub.add_parser("run")
     p.add_argument("src")
-    g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("--deals", help="JSON file of sales: a list, or {\"trades\": [...]}")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--deals", help="JSON file of sales: a list, or {\"trades\": [...]}; omit all three to reuse the dataset the workspace remembers")
     g.add_argument("--exports", help="directory of `capsulectl deal export` files, one per deal, named <deal id>.json")
     g.add_argument("--store", help="a seller's store home (XDG_HOME): reads its closed deals through capsulectl")
     p.add_argument("--dry-run", action="store_true", help="rehearsal: stamp the page, switch nothing on")
@@ -587,16 +690,30 @@ def main(argv):
     p = sub.add_parser("verify")
     p.add_argument("page")
     p = sub.add_parser("compare")
-    p.add_argument("a", help="the earlier run's result.json, or its run directory")
-    p.add_argument("b", help="the later run's result.json, or its run directory")
+    p.add_argument("a", help="the earlier run's result.json or run directory, or a pack digest (6+ characters) from `terms history`")
+    p.add_argument("b", help="the later run's result.json or run directory, or a pack digest")
+    p.add_argument("--workspace")
+    p = sub.add_parser("history")
+    p.add_argument("src")
+    p.add_argument("--workspace")
+    p = sub.add_parser("checkout")
+    p.add_argument("src")
+    p.add_argument("digest", help="a pack digest (6+ characters) from `terms history`")
+    p.add_argument("--force", action="store_true", help="discard changes no run or publish has recorded")
+    p.add_argument("--workspace")
+    p = sub.add_parser("keep-transcript")
+    p.add_argument("src")
+    p.add_argument("file", help="an authoring transcript to keep, privately, beside the pack (nothing keeps one otherwise)")
+    p.add_argument("--workspace")
     args = ap.parse_args(argv)
     try:
         code = {"lint": cmd_lint, "test": cmd_test, "run": cmd_run, "verify": cmd_verify, "init": cmd_init,
-                "readiness": cmd_readiness, "compare": cmd_compare, "publish": cmd_publish}[args.cmd](args)
+                "readiness": cmd_readiness, "compare": cmd_compare, "publish": cmd_publish, "history": cmd_history,
+                "checkout": cmd_checkout, "keep-transcript": cmd_keep_transcript}[args.cmd](args)
         if args.cmd in ("lint", "test"):
             refresh_or_say(args.src)
         return code
-    except (TermsError, result_v0.RollupError, ValueError) as e:
+    except (TermsError, result_v0.RollupError, ValueError) as e:  # WorkspaceError is a ValueError
         return out({"error": str(e)}, 1)
 
 
