@@ -1,0 +1,1819 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/action-state-group/evidencebook-skills/schemas/pack-source.schema.json",
+  "title": "pack-source.yaml",
+  "description": "One authoring form for every Terms Pack, told apart by scope.kind: admission, deal, conduct, live, and the report kind (after_the_fact, which is also what an absent scope means). A conduct pack is private to its owner and is never sent to a counterparty.",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "admission",
+            "deal",
+            "live",
+            "after_the_fact",
+            "conduct"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "admission"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "$ref": "#/$defs/admission"
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "deal"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "$ref": "#/$defs/deal"
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "live"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "$ref": "#/$defs/live"
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "conduct"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "$ref": "#/$defs/conduct"
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "scope"
+              ],
+              "properties": {
+                "scope": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "admission"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "scope"
+              ],
+              "properties": {
+                "scope": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "deal"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "scope"
+              ],
+              "properties": {
+                "scope": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "live"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "required": [
+                "scope"
+              ],
+              "properties": {
+                "scope": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "conduct"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "then": {
+        "$ref": "#/$defs/after_the_fact"
+      }
+    }
+  ],
+  "$defs": {
+    "admission": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "admission"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        "pack_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_-]*/\\d+\\.\\d+\\.\\d+$"
+        },
+        "pack_version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source": {
+          "type": "string"
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "GO",
+              "ASK",
+              "LIMIT",
+              "NO"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "missing": {
+          "enum": [
+            "LIMIT",
+            "NO"
+          ]
+        },
+        "accept": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "band": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "scale": {
+                "type": "integer",
+                "minimum": -30,
+                "maximum": 30
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "band",
+              "scale"
+            ]
+          }
+        },
+        "tiers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "max_decade": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": -60,
+                  "maximum": 60
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "max_decade"
+            ]
+          },
+          "minItems": 1
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "max_asks": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000
+            },
+            "deadline_s": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3153600000
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "max_asks",
+            "deadline_s"
+          ]
+        },
+        "trust_roots": {
+          "type": "object",
+          "properties": {
+            "controllers": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "witnesses": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "judges": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              }
+            },
+            "rails": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "digest"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "source": {
+                "enum": [
+                  "platform",
+                  "card",
+                  "bound",
+                  "own_history",
+                  "operator",
+                  "vouch",
+                  "stake",
+                  "judged"
+                ]
+              },
+              "check": {
+                "enum": [
+                  "platform.attestation_not_invalid",
+                  "platform.owner_signed",
+                  "card.verified",
+                  "card.fresh",
+                  "card.key_age",
+                  "card.witnessed",
+                  "card.claims_held",
+                  "card.controller_declared",
+                  "card.controller_trusted",
+                  "bound.selection_verified",
+                  "bound.no_unanswered_dispute",
+                  "own.settled",
+                  "own.held_halves",
+                  "own.no_conflicting",
+                  "own.no_adverse_adjudication",
+                  "operator.not_deny_listed",
+                  "operator.allow_listed",
+                  "vouch.distinct_controllers",
+                  "stake.covers_deal",
+                  "card.band_history_or_stake",
+                  "card.open_disputes",
+                  "card.not_stapled",
+                  "card.self_reported_served_periods",
+                  "card.referee_verdicts",
+                  "card.witness_receipts",
+                  "judged"
+                ]
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer"
+                }
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "on_fail": {
+                "if": {
+                  "type": "object"
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "cap": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "cap"
+                  ]
+                },
+                "else": {
+                  "enum": [
+                    "NO",
+                    "LIMIT",
+                    "record"
+                  ]
+                }
+              },
+              "ask": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "statement",
+              "source",
+              "check",
+              "from",
+              "on_fail"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "pack_id",
+        "pack_version",
+        "outcomes",
+        "missing",
+        "accept",
+        "tiers",
+        "budget",
+        "rows"
+      ]
+    },
+    "deal": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "deal"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        "pack_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*$"
+        },
+        "pack_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "evaluator": {
+          "enum": [
+            "transaction"
+          ]
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "tier": {
+                "const": "recomputed"
+              },
+              "check": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "proves": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "offered_price",
+                    "accepted_price",
+                    "paid_at",
+                    "delivered_at"
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "statement",
+              "tier",
+              "check",
+              "proves"
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "pack_id",
+        "pack_version",
+        "title",
+        "statement",
+        "evaluator",
+        "rows"
+      ]
+    },
+    "live": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "live"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        "pack_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*(-[a-z0-9_]+)*/\\d+\\.\\d+\\.\\d+$"
+        },
+        "pack_version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source": {
+          "type": "string"
+        },
+        "obligations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "check": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "selector": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "default_disposition": {
+                "enum": [
+                  "DO",
+                  "ASK",
+                  "NEVER"
+                ]
+              },
+              "re_derivability_grade": {
+                "enum": [
+                  "pure_replay",
+                  "ledger_state_dependent"
+                ]
+              },
+              "measurability": {
+                "enum": [
+                  "measured",
+                  "declared_not_measured"
+                ]
+              },
+              "evidence_instrument": {
+                "if": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    }
+                  }
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                },
+                "else": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "structured_field"
+                    },
+                    "field": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "field"
+                  ]
+                }
+              },
+              "mode": {
+                "enum": [
+                  "structural",
+                  "value",
+                  "judged",
+                  "fold_counterparty",
+                  "fold_rollup",
+                  "fold_agent",
+                  "fold_cohort"
+                ]
+              },
+              "judge_pin": {
+                "type": "object",
+                "properties": {
+                  "model_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "prompt_template_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "schema_hash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "input_refs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  },
+                  "model_hosting": {
+                    "enum": [
+                      "hosted",
+                      "self_hosted"
+                    ]
+                  },
+                  "model_digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "model_id",
+                  "prompt_template_hash",
+                  "schema_hash",
+                  "input_refs",
+                  "model_hosting"
+                ]
+              },
+              "requirement_tier": {
+                "enum": [
+                  "must_have",
+                  "informational"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "statement"
+            ]
+          }
+        },
+        "outcomes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "effect_claim": {
+                "enum": [
+                  "agent.caused_resolution",
+                  "recommendation.acted_on",
+                  "resolution.followed_action"
+                ]
+              },
+              "refusal_reason_code": {
+                "enum": [
+                  "agent_caused_resolution_undecomposable",
+                  "subjective_state_unattestable",
+                  "unbounded_goal_unmonitorable"
+                ]
+              },
+              "re_derivability_grade": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "declared_by": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "evidence_mapping_by": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "required_assurance_grade": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "exposure_denominator_ref": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "retention_check": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "statement": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "evidence_rule": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "clause_ref": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "forward_verdict": {
+                "enum": [
+                  "DETERMINISTIC",
+                  "UNAVAILABLE-STATE-REQUIRED",
+                  "UNAVAILABLE-MODEL-REQUIRED",
+                  "REFUSED"
+                ]
+              },
+              "backward_verdict": {
+                "enum": [
+                  "DETERMINISTIC",
+                  "WITH-INSTRUMENTATION",
+                  "MODEL-ASSISTED",
+                  "MANUAL",
+                  "REFUSED"
+                ]
+              },
+              "window": {
+                "type": "object",
+                "properties": {
+                  "duration": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "cure": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "grace": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "duration"
+                ]
+              },
+              "measurability": {
+                "enum": [
+                  "measured",
+                  "declared_not_measured"
+                ]
+              },
+              "evidence_instrument": {
+                "if": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    }
+                  }
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                },
+                "else": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "structured_field"
+                    },
+                    "field": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "field"
+                  ]
+                }
+              },
+              "tier": {
+                "enum": [
+                  "must_have",
+                  "informational"
+                ]
+              },
+              "mode": {
+                "enum": [
+                  "structural",
+                  "value",
+                  "judged",
+                  "fold_counterparty",
+                  "fold_rollup",
+                  "fold_agent",
+                  "fold_cohort"
+                ]
+              },
+              "clause": {
+                "type": "object",
+                "properties": {
+                  "article": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "as_amended_by": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "contested": {
+                    "type": "boolean"
+                  },
+                  "effective_from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "instrument": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "jurisdiction": {
+                    "type": "string"
+                  },
+                  "paragraph": {
+                    "type": "string"
+                  },
+                  "source_url": {
+                    "type": "string"
+                  },
+                  "text_snapshot_digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "instrument",
+                  "article"
+                ]
+              },
+              "profile": {
+                "enum": [
+                  "outcome",
+                  "obligation",
+                  "process",
+                  "quality",
+                  "human_role",
+                  "attribution",
+                  "settlement"
+                ]
+              },
+              "epistemic_type": {
+                "enum": [
+                  "observed_event",
+                  "system_of_record_fact",
+                  "producer_claim",
+                  "human_report",
+                  "semantic_judgment",
+                  "derived_metric",
+                  "adjudication",
+                  "obligation_reference"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "statement",
+              "evidence_rule",
+              "forward_verdict",
+              "backward_verdict"
+            ]
+          }
+        },
+        "action_semantics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "action_type": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "action_class": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "required_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "optional_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "field_aliases": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "action_type",
+              "action_class",
+              "required_fields"
+            ]
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "if": {
+              "required": [
+                "wicket_ref"
+              ]
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "wicket_ref": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "check": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "scope": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "minItems": 1
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "wicket_ref",
+                "check",
+                "digest"
+              ]
+            },
+            "else": {
+              "type": "object",
+              "properties": {
+                "wicket_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*/\\d+\\.\\d+\\.\\d+$"
+                },
+                "check": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "semantics": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "scope": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "minItems": 1
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "wicket_id",
+                "check"
+              ]
+            }
+          }
+        },
+        "folds": {
+          "type": "array",
+          "items": {
+            "if": {
+              "required": [
+                "file"
+              ]
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "file"
+              ]
+            },
+            "else": {
+              "type": "object",
+              "properties": {
+                "fold_ref": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "fold_ref",
+                "digest"
+              ]
+            }
+          }
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "profile_id": {
+                "enum": [
+                  "p1_external_serve",
+                  "p2_internal_assist",
+                  "p3_mediated",
+                  "p4_agent_to_agent"
+                ]
+              },
+              "counterparty_binding": {
+                "type": "object",
+                "properties": {
+                  "direct": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "ultimate": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "direct"
+                ]
+              },
+              "overrides": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "outcome_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "applies": {
+                      "type": "boolean"
+                    },
+                    "tier": {
+                      "enum": [
+                        "must_have",
+                        "informational"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "outcome_id"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "profile_id",
+              "counterparty_binding"
+            ]
+          }
+        },
+        "proposers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "fold_id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "strategy": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": [
+                  "planned"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "fold_id",
+              "strategy"
+            ]
+          }
+        },
+        "scope_census": {
+          "type": "object",
+          "properties": {
+            "document_digest": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "m": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "review_by": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "document_digest",
+            "n",
+            "m",
+            "review_by"
+          ]
+        },
+        "holds_integration": {
+          "enum": [
+            "none",
+            "stubbed",
+            "built"
+          ]
+        },
+        "taxonomy": {
+          "type": "object",
+          "properties": {
+            "taxonomy_version": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "digest": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "taxonomy_version",
+            "digest"
+          ]
+        },
+        "fixtures": {},
+        "bootstrap": {}
+      },
+      "additionalProperties": false,
+      "required": [
+        "scope",
+        "pack_id",
+        "pack_version"
+      ]
+    },
+    "after_the_fact": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "after_the_fact",
+                "conduct"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ]
+        },
+        "pack_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "pack_version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "rubric_version": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "outcome_statement": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "resolution_rule": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "counterparty": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "counterparty_note": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "source": {},
+        "decision_note": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "switches": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "boolean"
+          }
+        },
+        "switches_note": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "judge_batch": {
+          "type": "boolean"
+        },
+        "judge_batch_note": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "criteria": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "tier": {
+                      "enum": [
+                        "judged",
+                        "recomputed"
+                      ]
+                    },
+                    "recompute_eligible": {
+                      "type": "boolean"
+                    },
+                    "recompute_note": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "tier_switch": {
+                      "type": "object",
+                      "properties": {
+                        "flag": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        },
+                        "tier_when_on": {
+                          "enum": [
+                            "judged",
+                            "recomputed"
+                          ]
+                        },
+                        "note": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "flag",
+                        "tier_when_on"
+                      ]
+                    },
+                    "claim_switch": {
+                      "type": "object",
+                      "properties": {
+                        "flag": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        },
+                        "claim_when_on": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        },
+                        "note": {
+                          "type": "string",
+                          "minLength": 1,
+                          "pattern": "\\S"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "flag",
+                        "claim_when_on"
+                      ]
+                    },
+                    "never_out_of_scope": {
+                      "type": "boolean"
+                    },
+                    "rule_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "judge_question": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "met_means": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "not_met_means": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "scope_note": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "measurability": {
+                      "enum": [
+                        "measured",
+                        "declared_not_measured"
+                      ]
+                    },
+                    "finding": {
+                      "type": "object"
+                    },
+                    "fold_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "not_evaluable_note": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "card_label": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "recompute_precheck": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "rule_half": {
+                      "type": "boolean"
+                    },
+                    "judge_input_refs": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "amount_minor",
+                          "cited_mandate_capsule_id",
+                          "counterparty_account_ref",
+                          "currency",
+                          "equivalence_key",
+                          "model_id",
+                          "outgoing_content",
+                          "provider",
+                          "rail",
+                          "recurrence",
+                          "target"
+                        ]
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "out_of_scope_means": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "requirement_tier": {
+                      "enum": [
+                        "informational",
+                        "must_have"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "label",
+                    "text",
+                    "tier"
+                  ]
+                },
+                "minItems": 1
+              },
+              "article": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "plain": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "judged_terms": {},
+              "applicability": {},
+              "method": {}
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "question",
+              "criteria"
+            ]
+          },
+          "minItems": 1
+        },
+        "judge": {
+          "type": "object",
+          "properties": {
+            "model_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "sampling_params": {
+              "type": "object"
+            },
+            "min_confidence": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "reference_files": {
+              "type": "object",
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "booking_db": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "policy",
+                "booking_db"
+              ]
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 1
+            },
+            "citation_note": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "model_id"
+          ]
+        },
+        "evaluator": {
+          "enum": [
+            "inference_deals"
+          ]
+        },
+        "window": {
+          "type": "object"
+        },
+        "regulation": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "quality_protocol": {},
+        "report": {
+          "type": "object",
+          "properties": {
+            "template": {
+              "enum": [
+                "outcome-report/v1",
+                "eu-ai-act-compliance/v1"
+              ]
+            },
+            "percentages": {
+              "type": "boolean"
+            },
+            "card": {
+              "enum": [
+                "attribution",
+                "human_role",
+                "obligation",
+                "outcome",
+                "process",
+                "quality",
+                "settlement"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "reason_code_overrides": {
+          "type": "object"
+        },
+        "sample_policy": {
+          "type": "object"
+        },
+        "disclosure": {
+          "type": "object",
+          "properties": {
+            "suppress": {
+              "type": "array"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "pack_id",
+        "pack_version",
+        "rubric_version",
+        "outcome_statement",
+        "resolution_rule",
+        "counterparty",
+        "checks",
+        "report"
+      ]
+    },
+    "conduct": {
+      "$ref": "#/$defs/after_the_fact"
+    }
+  }
+}

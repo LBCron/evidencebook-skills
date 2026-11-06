@@ -1,0 +1,42 @@
+{
+  "pack": "asg/live-sample/0.1.0",
+  "cases": [
+    {
+      "row": "no-duplicate-dispatch",
+      "case": "met",
+      "input": {
+        "actions": [
+          {
+            "action_type": "payment.dispatch",
+            "target": "acct-1",
+            "amount_minor": 100,
+            "currency": "USD",
+            "at": "2026-11-01T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "row": "no-duplicate-dispatch",
+      "case": "not_met",
+      "input": {
+        "actions": [
+          {
+            "action_type": "payment.dispatch",
+            "target": "acct-1",
+            "amount_minor": 100,
+            "currency": "USD",
+            "at": "2026-11-01T00:00:00Z"
+          },
+          {
+            "action_type": "payment.dispatch",
+            "target": "acct-1",
+            "amount_minor": 100,
+            "currency": "USD",
+            "at": "2026-11-02T00:00:00Z"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "pack": "report-sample",
+  "cases": [
+    {
+      "row": "promise.kept",
+      "case": "met",
+      "input": {
+        "conversation": [
+          {
+            "role": "agent",
+            "text": "I will refund you today."
+          },
+          {
+            "role": "tool",
+            "text": "refund issued"
+          }
+        ]
+      }
+    },
+    {
+      "row": "promise.kept",
+      "case": "not_met",
+      "input": {
+        "conversation": [
+          {
+            "role": "agent",
+            "text": "I will refund you today."
+          },
+          {
+            "role": "agent",
+            "text": "Goodbye."
+          }
+        ]
+      }
+    }
+  ]
+}

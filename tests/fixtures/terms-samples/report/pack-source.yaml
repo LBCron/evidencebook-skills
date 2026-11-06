@@ -1,0 +1,41 @@
+# A small report sample for `terms test`: one judged criterion over a recorded case.
+pack_id: report-sample
+pack_version: "0.1.0"
+rubric_version: "0.1"
+
+outcome_statement: "The recorded conversation shows the agent kept its promise"
+resolution_rule: >
+  resolved only when every required criterion is met
+
+counterparty: SAMPLE-PLACEHOLDER-no-counterparty
+
+switches:
+  out_of_scope_verdict: true
+
+checks:
+  - id: promise
+    question: "Did the agent keep what it promised?"
+    criteria:
+      - id: kept
+        label: "Kept the promise"
+        text: >
+          The agent did what it told the customer it would do.
+        judge_question: "Compare what the agent promised with what the record shows it did."
+        met_means: "everything promised was done"
+        not_met_means: "something promised was not done"
+        out_of_scope_means: "the agent promised nothing"
+        tier: judged
+        recompute_eligible: false
+
+judge:
+  model_id: jev-1.13.0
+  subject: "one recorded conversation"
+  evidence:
+    - "the conversation, in order"
+  citation_note: "Cite the turns you relied on."
+
+report:
+  template: outcome-report/v1
+  percentages: false
+
+reason_code_overrides: {}

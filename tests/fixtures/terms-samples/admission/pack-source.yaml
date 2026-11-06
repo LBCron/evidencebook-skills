@@ -1,0 +1,37 @@
+# A small admission sample for `terms test`: two platform rows and one operator row.
+pack_id: asg/admission_sample/0.1.0
+pack_version: 0.1.0
+scope:
+  kind: admission
+source: "terms-samples: the smallest admission pack with a row that can say NO and one that is recorded"
+
+outcomes: ["GO", "LIMIT", "NO"]
+missing: "LIMIT"
+
+accept:
+  sat: {band: sat, scale: 0}
+
+tiers:
+  - id: T0
+    max_decade: {sat: 3}
+
+budget:
+  max_asks: 0
+  deadline_s: 3600
+
+trust_roots:
+  controllers: [placeholder-controller]
+
+rows:
+  - id: attestation
+    statement: The platform does not report the counterparty's release attestation as invalid.
+    source: platform
+    check: platform.attestation_not_invalid
+    from: T0
+    on_fail: "NO"
+  - id: deny-list
+    statement: The counterparty is not on the operator's deny list.
+    source: operator
+    check: operator.not_deny_listed
+    from: T0
+    on_fail: "NO"
