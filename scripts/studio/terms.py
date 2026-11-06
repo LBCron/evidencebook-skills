@@ -26,7 +26,7 @@ current after each edit, label (labels.json) or run; that is the one write `lint
 make, and `run` makes it only inside the workspace it is given.
 
 The workspace (default ~/studio, or $TERMS_WORKSPACE) is the only place a verb
-writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html} and `publish`
+writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html,plan.json,dataset.json} and `publish`
 writes published/<pack_id>/<digest>/; both also keep packs/<pack_id>/{workspace.json,
 history.jsonl,history/} (the dataset, the last run, one line per pack digest; see
 scripts/studio/workspace.py), `checkout` overwrites SRC (inside the workspace) and
@@ -35,7 +35,8 @@ reads are only read. With no --workspace or $TERMS_WORKSPACE, a SRC inside a pac
 `init` made names its own workspace.
 
 A Result is Evidence Result v0 (scripts/result_v0.py), one claim per sale per
-row, plus two document members: `x-pack` (the pack's id, version, definition
+row, `plan_ref` and `dataset_ref` (section 7.3: the digests of plan.json and dataset.json,
+written beside result.json; scripts/studio/dataset_plan.py), plus two document members: `x-pack` (the pack's id, version, definition
 digest and each row's digest) and, on a rehearsal, `x-rehearsal: true`. The page
 carries result.json's exact bytes in a <script type="application/json">, and
 states their SHA-256 beside them; `terms verify` checks the page against itself
@@ -65,6 +66,7 @@ import yaml  # noqa: E402
 import admission_pack  # noqa: E402
 import case_eval  # noqa: E402
 import deal_pack  # noqa: E402
+import dataset_plan  # noqa: E402
 import deal_store  # noqa: E402
 import pack_compile  # noqa: E402
 import pack_schema  # noqa: E402
@@ -195,8 +197,11 @@ def build_result(source, deals, generated_at, rehearsal):
         "pack_id": source["pack_id"], "pack_version": source["pack_version"],
         "definition_digest": compiled["definition_digest"],
         "rows": [{"id": r["id"], "statement": r["statement"], "row_digest": r["row_digest"]} for r in rows],
-        "sales": {d["deal_id"]: hashlib.sha256(rfc8785.dumps(d)).hexdigest() for d in deals},
+        "sales": dataset_plan.sale_digests(deals),
     }
+    plan, dataset = dataset_plan.build(merged["x-pack"]["sales"])
+    merged["plan_ref"] = dataset_plan.digest_ref(dataset_plan.digest_of(plan))
+    merged["dataset_ref"] = dataset_plan.digest_ref(dataset_plan.digest_of(dataset))
     if rehearsal:
         merged["x-rehearsal"] = True
     return merged
@@ -465,6 +470,9 @@ def cmd_run(args):
     run = next_run_dir(ws, source["pack_id"])
     (run / "result.json").write_bytes(raw)
     (run / "report.html").write_text(page_html(result, raw), encoding="utf-8")
+    plan, dataset = dataset_plan.build(result["x-pack"]["sales"])  # the documents plan_ref and dataset_ref name
+    (run / "plan.json").write_bytes(dataset_plan.canonical_bytes(plan))
+    (run / "dataset.json").write_bytes(dataset_plan.canonical_bytes(dataset))
     met, total = came_through(result)
     folder = inside(ws, ws / "packs" / source["pack_id"])
     folder.mkdir(parents=True, exist_ok=True)
@@ -488,6 +496,31 @@ def cmd_run(args):
 
 _SCRIPT = re.compile(r'<script type="application/json" id="terms-result" data-sha256="([0-9a-f]{64})" '
                      r'data-rehearsal="(true|false)" data-pack-digest="([0-9a-f]{64})">(.*?)</script>', re.S)
+
+
+def cited_documents(result, folder):
+    """Issues with plan_ref and dataset_ref, which a verifier can rebuild from the Result's own
+    x-pack.sales (scripts/studio/dataset_plan.py), and with plan.json and dataset.json beside the
+    page, which are optional: one that is there must be the canonical bytes of that rebuild. A
+    Result with neither ref (made before they were set) has nothing to check."""
+    if "plan_ref" not in result and "dataset_ref" not in result:
+        return []
+    try:
+        plan, dataset = dataset_plan.build(result["x-pack"]["sales"])
+    except (KeyError, TypeError, AttributeError, ValueError):
+        return ["the Result's plan_ref and dataset_ref cannot be rebuilt: x-pack.sales is not a table of sale digests"]
+    issues = []
+    for member, document in (("plan_ref", plan), ("dataset_ref", dataset)):
+        if result.get(member) != dataset_plan.digest_ref(dataset_plan.digest_of(document)):
+            issues.append(f"the Result's {member} is not the digest of the {member[:-4]} its x-pack.sales select")
+    for name, document in (("plan.json", plan), ("dataset.json", dataset)):
+        try:
+            path = folder / name
+            if path.exists() and path.read_bytes() != dataset_plan.canonical_bytes(document):
+                issues.append(f"{name} beside the page is not the document the Result's sales give")
+        except OSError as e:
+            issues.append(f"cannot read {name} beside the page: {e}")
+    return issues
 
 
 def cmd_verify(args):
@@ -518,6 +551,7 @@ def cmd_verify(args):
     sibling = page.with_name("result.json")
     if sibling.exists() and sibling.read_bytes() != raw:
         issues.append("result.json beside the page is not the same bytes")
+    issues += cited_documents(result, page.parent)
     return out({"verified": not issues, "issues": issues, "came_through": met, "sales": total,
                 "rehearsal": bool(result.get("x-rehearsal")), "pack_digest": pack_digest,
                 "result_sha256": declared}, 1 if issues else 0)

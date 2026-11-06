@@ -13,6 +13,7 @@ import json
 import pathlib
 import subprocess
 import sys
+import os
 import tempfile
 import unittest
 
@@ -22,6 +23,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "evaluators"))
 
 import jsonschema  # noqa: E402
 
+import dataset_plan  # noqa: E402
 import transaction  # noqa: E402
 import terms  # noqa: E402
 
@@ -92,6 +94,118 @@ class StickerDeal(unittest.TestCase):
         validator = jsonschema.Draft202012Validator(json.loads(t.SCHEMA_PATH.read_bytes()))
         result = json.loads(pathlib.Path(self.rehearse(SOURCE)["result"]).read_bytes())
         self.assertEqual([e.message for e in validator.iter_errors(result)], [])
+
+    def test_two_packs_over_one_deals_file_cite_the_same_plan_and_dataset(self):
+        a = self.rehearse(SOURCE)
+        with tempfile.TemporaryDirectory() as tmp:
+            code, b = call("run", self.two_day_source(), "--deals", TRADES, "--dry-run",
+                           "--workspace", pathlib.Path(tmp) / "ws", "--generated-at", GENERATED)
+            self.assertEqual(code, 0, b)
+            rb = json.loads(pathlib.Path(b["result"]).read_bytes())
+        ra = json.loads(pathlib.Path(a["result"]).read_bytes())
+        self.assertNotEqual(ra["x-pack"]["definition_digest"], rb["x-pack"]["definition_digest"])
+        self.assertEqual((ra["plan_ref"], ra["dataset_ref"]), (rb["plan_ref"], rb["dataset_ref"]))
+        self.assertEqual(ra["plan_ref"]["digest_alg"], "SHA-256")
+        # the order of the file never matters
+        shuffled = self.tmp_path / "shuffled.json"
+        sales = json.loads(TRADES.read_text())
+        shuffled.write_text(json.dumps(list(reversed(sales["trades"] if isinstance(sales, dict) else sales))))
+        code, c = call("run", SOURCE, "--deals", shuffled, "--dry-run", "--workspace", self.ws, "--generated-at", GENERATED)
+        self.assertEqual(code, 0, c)
+        rc = json.loads(pathlib.Path(c["result"]).read_bytes())
+        self.assertEqual((ra["plan_ref"], ra["dataset_ref"]), (rc["plan_ref"], rc["dataset_ref"]))
+
+    def test_other_sales_cite_another_plan_and_dataset(self):
+        ra = json.loads(pathlib.Path(self.rehearse(SOURCE)["result"]).read_bytes())
+        sales = json.loads(TRADES.read_text())
+        sales = sales["trades"] if isinstance(sales, dict) else sales
+        # one sale fewer, and one sale's price changed with the same count: both refs move
+        for other in (sales[:-1], [dict(sales[0], price=99999)] + sales[1:]):
+            path = self.tmp_path / "other.json"
+            path.write_text(json.dumps(other))
+            code, res = call("run", SOURCE, "--deals", path, "--dry-run", "--workspace", self.tmp_path / "ws2",
+                             "--generated-at", GENERATED)
+            self.assertEqual(code, 0, res)
+            r = json.loads(pathlib.Path(res["result"]).read_bytes())
+            self.assertNotEqual(r["plan_ref"], ra["plan_ref"])
+            self.assertNotEqual(r["dataset_ref"], ra["dataset_ref"])
+            self.assertEqual(call("verify", res["page"])[0], 0)
+
+    def rewrite_page(self, res, change):
+        """Replace the run's Result by change(result), with a page that draws it: a forged but
+        self-consistent page, so only the plan_ref / dataset_ref checks can refuse it."""
+        result = json.loads(pathlib.Path(res["result"]).read_bytes())
+        change(result)
+        raw = terms.result_bytes(result)
+        pathlib.Path(res["result"]).write_bytes(raw)
+        pathlib.Path(res["page"]).write_text(terms.page_html(result, raw), encoding="utf-8")
+
+    def test_verify_rebuilds_the_refs_from_the_results_own_sales(self):
+        res = self.rehearse(SOURCE)
+        run = pathlib.Path(res["run"])
+        result = json.loads((run / "result.json").read_bytes())
+        plan = json.loads((run / "plan.json").read_bytes())
+        dataset = json.loads((run / "dataset.json").read_bytes())
+        self.assertEqual(dataset_plan.digest_of(plan), result["plan_ref"]["digest"])
+        self.assertEqual(dataset_plan.digest_of(dataset), result["dataset_ref"]["digest"])
+        self.assertEqual(dataset["plan_ref"], result["plan_ref"])
+        self.assertEqual(len(dataset["rows"]), 10)
+        self.assertEqual(plan["nodes"][0]["params"]["through_seq"], 9)
+        self.assertNotIn("price", json.dumps(dataset))  # digests only, never a sale's values
+        self.assertEqual(call("verify", res["page"])[0], 0)
+        # a ref that names other sales than x-pack.sales select is refused
+        other = dataset_plan.digest_ref("ab" * 32)
+        self.rewrite_page(res, lambda r: r.update(dataset_ref=other))
+        code, ver = call("verify", res["page"])
+        self.assertEqual(code, 1)
+        self.assertIn("dataset_ref", ver["issues"][0])
+        self.rewrite_page(res, lambda r: r.update(plan_ref=other, dataset_ref=result["dataset_ref"]))
+        self.assertIn("plan_ref", call("verify", res["page"])[1]["issues"][0])
+        # one ref without the other is refused too
+        self.rewrite_page(res, lambda r: (r.update(plan_ref=result["plan_ref"]), r.pop("dataset_ref")))
+        self.assertEqual(call("verify", res["page"])[0], 1)
+        # x-pack.sales that is not a table of digests cannot be rebuilt: an issue, not a traceback
+        for bad in ([], "x", {"a": ["b"]}):
+            self.rewrite_page(res, lambda r: r["x-pack"].update(sales=bad))
+            code, ver = call("verify", res["page"])
+            self.assertEqual((code, ver["verified"]), (1, False), bad)
+            self.assertIn("cannot be rebuilt", ver["issues"][0])
+        # a Result made before the refs were set has nothing to check
+        self.rewrite_page(res, lambda r: (r.pop("plan_ref", None), r.pop("dataset_ref", None)))
+        self.assertEqual(call("verify", res["page"])[0], 0)
+
+    def test_verify_refuses_a_sidecar_that_is_not_the_one_the_sales_give(self):
+        res = self.rehearse(SOURCE)
+        run = pathlib.Path(res["run"])
+        good = {n: (run / n).read_bytes() for n in ("plan.json", "dataset.json")}
+        for name, bad in (("dataset.json", json.dumps(dict(json.loads(good["dataset.json"]), rows=[])).encode()),
+                          ("plan.json", b'{"nodes":[]}'), ("plan.json", b"not json"), ("plan.json", b"NaN")):
+            (run / name).write_bytes(bad)
+            code, ver = call("verify", res["page"])
+            self.assertEqual((code, ver["verified"]), (1, False), (name, bad))
+            self.assertIn(name, ver["issues"][0])
+            (run / name).write_bytes(good[name])
+        (run / "plan.json").unlink()
+        (run / "plan.json").mkdir()  # unreadable: an issue, not a traceback
+        code, ver = call("verify", res["page"])
+        self.assertEqual((code, ver["verified"]), (1, False))
+        (run / "plan.json").rmdir()
+        (run / "dataset.json").unlink()
+        self.assertEqual(call("verify", res["page"])[0], 0)  # the documents are optional
+
+    def test_the_dataset_is_what_aacs_own_checker_rebuilds(self):
+        aac = pathlib.Path(os.environ.get("AAC_CHECKOUT", pathlib.Path.home() / "Github" / "agent-action-capsule"))
+        if not (aac / "schemas" / "evidence_dataset.py").exists():
+            self.skipTest("no agent-action-capsule checkout (set AAC_CHECKOUT)")
+        sys.path.insert(0, str(aac / "schemas"))
+        import evidence_dataset  # noqa: E402
+        sales = json.loads(TRADES.read_text())
+        sales = sales["trades"] if isinstance(sales, dict) else sales
+        deals = [dict(d, deal_id=d.get("deal_id", d.get("id"))) for d in sales]
+        digests = dataset_plan.sale_digests(deals)
+        plan, dataset = dataset_plan.build(digests)
+        evidence_dataset.check_dataset(plan, dataset, dataset_plan.headers(digests))
+        self.assertEqual(evidence_dataset.build_dataset(plan, dataset_plan.headers(digests)), dataset)
 
     def test_the_page_verifies_offline_and_embeds_the_result_bytes(self):
         res = self.rehearse(SOURCE)
