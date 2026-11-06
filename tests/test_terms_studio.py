@@ -697,43 +697,45 @@ class CoverageReport(unittest.TestCase):
                                  (modes.count("contemporaneous"), modes.count("backfilled")))
                 self.assertNotEqual(s["backfilled_count"], s["record_count"])
 
-    def test_a_sale_with_no_stated_provenance_is_counted_as_neither(self):
-        # issue 152: a sale that says nothing was recorded at some time nobody asserted.
+    def test_a_sale_with_no_stated_provenance_leaves_the_report_out(self):
+        # issue 152: a sale that says nothing was recorded at some time nobody asserted; the spec's
+        # contemporaneous + backfilled == record_count leaves it no place in the counts.
         for modes in ([None] * 3, ["backfilled", None, "contemporaneous"], ["backfilled", "backfilled", None]):
             sales = self.sales(modes)
             result = self.result_over(sales)
-            stated = [m for m in modes if m]
+            self.assertNotIn("coverage_report", result, modes)
             self.assertEqual(result["x-pack"]["provenance_unknown"],
                              sorted(s["deal_id"] for s, m in zip(sales, modes) if not m))
-            for s in self.sources(result):
-                self.assertEqual(s["record_count"], len(stated))
-                self.assertEqual((s["contemporaneous_count"], s["backfilled_count"]),
-                                 (stated.count("contemporaneous"), stated.count("backfilled")))
-                self.assertEqual(s["contemporaneous_count"] + s["backfilled_count"], s["record_count"])
-                self.assertEqual(len(s["evidence"]), len(stated))
-                self.assertEqual(s["status"], "SATISFIED" if stated else "NOT_FOUND")
             self.assertFalse(terms.backfill_only(result), modes)  # unknown is never "all backfilled"
         both = self.result_over([dict(self.sales(["backfilled"])[0], contemporaneous=True)])
         self.assertEqual(len(both["x-pack"]["provenance_unknown"]), 1)  # two modes at once state none
+        self.assertNotIn("coverage_report", both)
 
     def test_the_report_names_each_rows_claims_and_passes_the_engines_cross_checks(self):
-        result = self.result_over(self.sales(["backfilled"] * 3))
-        by_id = {c["id"]: c for c in result["claims"]}
-        for row in result["coverage_report"]["requirements"]:
-            self.assertEqual(len(row["claim_ids"]), 3)
-            for cid in row["claim_ids"]:
-                self.assertEqual(by_id[cid]["requirement_ref"], row["requirement_ref"])
         try:
             from capsule_engine.report.coverage import verify_coverage_report
         except ImportError:
-            self.skipTest("capsule-engine is not installed")
-        verify_coverage_report(result["coverage_report"], by_id)
+            verify_coverage_report = None
+        for modes in (["backfilled"] * 3, ["backfilled", "contemporaneous", "contemporaneous"]):
+            result = self.result_over(self.sales(modes))
+            by_id = {c["id"]: c for c in result["claims"]}
+            for row in result["coverage_report"]["requirements"]:
+                self.assertEqual(len(row["claim_ids"]), 3)
+                for cid in row["claim_ids"]:
+                    self.assertEqual(by_id[cid]["requirement_ref"], row["requirement_ref"])
+                for s in row["sources"]:  # the spec's count rule, checked here even without the engine
+                    self.assertEqual(s["contemporaneous_count"] + s["backfilled_count"], s["record_count"])
+                    self.assertEqual(s["record_count"], len(s["evidence"]))
+                self.assertEqual(row["independence"]["unattributed_records"], 3)
+            if verify_coverage_report:
+                verify_coverage_report(result["coverage_report"], by_id)
 
     def test_a_sale_without_the_member_keeps_its_digest(self):
-        # plan_ref and dataset_ref hang on the sale digests: only a backfilled sale may differ.
+        # plan_ref and dataset_ref hang on the sale digests: only a sale that states a mode may differ.
         sale = json.loads(TRADES.read_text())["trades"][0]
         self.assertNotIn("backfilled", sale)
         self.assertNotEqual(dataset_plan.digest_of(sale), dataset_plan.digest_of(dict(sale, backfilled=True)))
+        self.assertNotEqual(dataset_plan.digest_of(sale), dataset_plan.digest_of(dict(sale, contemporaneous=True)))
         result = self.result_over(self.sales([None] * 3))
         self.assertEqual(result["x-pack"]["sales"][sale["deal_id"]], dataset_plan.digest_of(sale))
 
