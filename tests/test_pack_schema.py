@@ -10,10 +10,12 @@ import copy
 import glob
 import io
 import json
+import os
 import pathlib
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 for sub in ("scripts", "scripts/evaluators", "scripts/studio"):
@@ -22,6 +24,7 @@ for sub in ("scripts", "scripts/evaluators", "scripts/studio"):
 import yaml  # noqa: E402
 
 import admission_pack  # noqa: E402
+import case_eval  # noqa: E402
 import deal_pack  # noqa: E402
 import live_pack  # noqa: E402
 import pack_compile  # noqa: E402
@@ -235,10 +238,10 @@ class LintCli(unittest.TestCase):
         self.assertEqual((code, res["valid"]), (1, False))
 
 
-def run_test(path):
+def run_test(path, *flags):
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        code = terms.main(["test", str(path)])
+        code = terms.main(["test", str(path), *flags])
     return code, json.loads(buf.getvalue())
 
 
@@ -283,9 +286,9 @@ class LintNeverCrashes(unittest.TestCase):
 
 class TestOnEveryKind(unittest.TestCase):
     """`terms test` takes a pack of any kind and its met / not_met cases for every row.
-    Only a deal pack has an evaluator `terms test` can run; the other kinds are decided by
-    capsule-engine or a pinned judge, so their cases are checked against the pack
-    and reported not evaluated, never passed."""
+    A deal pack and an evaluator pack (inference-deals) are run in process; an admission
+    pack by a capsule-engine binary named with --engine; live and judged packs have no
+    runner yet. A case that cannot run is reported not evaluated, never passed."""
 
     SAMPLES = {k: ROOT / f"tests/fixtures/terms-samples/{k}/pack-source.yaml"
                for k in ("admission", "live", "report", "conduct")}
@@ -297,13 +300,101 @@ class TestOnEveryKind(unittest.TestCase):
 
     def test_each_other_kind_checks_its_fixtures_and_says_nothing_was_run(self):
         for name, path in self.SAMPLES.items():
-            with self.subTest(kind=name):
+            with self.subTest(kind=name), unittest.mock.patch.dict("os.environ", clear=True):
                 code, res = run_test(path)
                 self.assertEqual(code, 0, res)
                 self.assertIsNone(res["passed"])
                 self.assertTrue(res["fixtures_valid"])
                 self.assertEqual((res["evaluated"], res["not_evaluated"]), (0, res["cases"]))
                 self.assertTrue(all(not r["evaluated"] and r["reason"] for r in res["rows"]))
+
+    def test_a_judged_pack_is_not_run_with_or_without_a_key(self):
+        for name in ("report", "conduct"):
+            for env in ({}, {"TYPESAFE_API_KEY": "x"}):
+                with self.subTest(kind=name, key=bool(env)), unittest.mock.patch.dict("os.environ", env, clear=True):
+                    code, res = run_test(self.SAMPLES[name])
+                    self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0))
+                    self.assertIn("waits for the owner's go", res["rows"][0]["reason"])
+
+    def test_live_names_the_engine_issue(self):
+        _, res = run_test(self.SAMPLES["live"])
+        self.assertIn("capsule-engine#286", res["rows"][0]["reason"])
+
+    def test_the_evaluator_pack_runs_both_cases_of_every_row(self):
+        code, res = run_test(ROOT / "packs/inference-deals/pack-source.yaml")
+        self.assertEqual((code, res["passed"], res["evaluated"], res["not_evaluated"]), (0, True, 6, 0))
+        for r in res["rows"]:
+            self.assertEqual((r["met_case"], r["miss_case"]), ("met", "not_met"))
+            self.assertEqual(r["decided_by"]["name"], "inference_deals")
+            self.assertRegex(r["decided_by"]["sha256"], "^[0-9a-f]{64}$")
+
+    def test_the_evaluator_fixture_is_what_its_generator_writes(self):
+        import subprocess
+        gen = ROOT / "packs/inference-deals/fixtures/generate.py"
+        made = subprocess.run([sys.executable, str(gen)], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(made, (ROOT / "packs/inference-deals/fixtures/two-case.json").read_text())
+
+    def test_an_evaluator_case_the_evaluator_decides_otherwise_fails(self):
+        dst = self.copy_evaluator_pack()
+        f = dst / "fixtures/two-case.json"
+        doc = json.loads(f.read_text())
+        row = "come_through.paid_as_agreed"
+        met, miss = [c for c in doc["cases"] if c["row"] == row]
+        met["input"], miss["input"] = miss["input"], met["input"]
+        f.write_text(json.dumps(doc))
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertEqual((code, res["passed"]), (1, False))
+        bad = [r for r in res["rows"] if r["row"] == row][0]
+        self.assertEqual((bad["evaluated"], bad["passed"], bad["met_case"], bad["miss_case"]),
+                         (True, False, "not_met", "met"))
+
+    def test_an_evaluator_case_that_cannot_be_built_is_not_evaluated(self):
+        dst = self.copy_evaluator_pack()
+        f = dst / "fixtures/two-case.json"
+        doc = json.loads(f.read_text())
+        doc["cases"][0]["input"] = {"records": [], "date": "2026-11-01"}
+        f.write_text(json.dumps(doc))
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertEqual((code, res["passed"], res["evaluated"], res["not_evaluated"]), (0, None, 4, 2), res)
+        self.assertFalse(res["rows"][0]["evaluated"])
+        self.assertIn("could not be built", res["rows"][0]["reason"])
+
+    def test_a_malformed_record_is_not_evaluated_and_does_not_crash(self):
+        dst = self.copy_evaluator_pack()
+        f = dst / "fixtures/two-case.json"
+        doc = json.loads(f.read_text())
+        doc["cases"][0]["input"]["records"][0]["model_attestation"] = "x"
+        f.write_text(json.dumps(doc))
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertEqual((code, res["passed"]), (0, None), res)
+        self.assertFalse(res["rows"][0]["evaluated"])
+
+    def test_a_case_with_two_deals_is_not_evaluated(self):
+        dst = self.copy_evaluator_pack()
+        f = dst / "fixtures/two-case.json"
+        doc = json.loads(f.read_text())
+        met = [c for c in doc["cases"] if c["row"] == "come_through.paid_as_agreed"]
+        met[0]["input"]["records"] = met[0]["input"]["records"] + met[1]["input"]["records"]
+        f.write_text(json.dumps(doc))
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertIsNone(res["passed"])
+        row = [r for r in res["rows"] if r["row"] == "come_through.paid_as_agreed"][0]
+        self.assertFalse(row["evaluated"])
+        self.assertIn("exactly one counted deal", row["reason"])
+
+    def test_the_evaluator_runs_the_source_not_a_compiled_file(self):
+        dst = self.copy_evaluator_pack()
+        shutil_rmtree(dst / "compiled")
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, True, 6), res)
+
+    def copy_evaluator_pack(self):
+        import shutil
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        dst = pathlib.Path(d.name) / "inference-deals"
+        shutil.copytree(ROOT / "packs/inference-deals", dst)
+        return dst
 
     def copy_sample(self, name):
         d = tempfile.TemporaryDirectory()
@@ -359,22 +450,6 @@ class TestOnEveryKind(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertTrue(any("same input" in i for i in res["issues"]), res)
 
-    def test_an_evaluator_pack_is_not_said_to_be_judged(self):
-        d = tempfile.TemporaryDirectory()
-        self.addCleanup(d.cleanup)
-        dst = pathlib.Path(d.name) / "pack"
-        (dst / "fixtures").mkdir(parents=True)
-        src = ROOT / "packs/inference-deals/pack-source.yaml"
-        (dst / "pack-source.yaml").write_text(src.read_text())
-        rows = terms.two_case.row_ids(load(src))
-        cases = [{"row": r, "case": c, "input": {"case": c, "row": r}} for r in rows for c in ("met", "not_met")]
-        (dst / "fixtures/two-case.json").write_text(json.dumps({"pack": load(src)["pack_id"], "cases": cases}))
-        code, res = run_test(dst / "pack-source.yaml")
-        self.assertEqual(code, 0, res)
-        reasons = {r["reason"] for r in res["rows"]}
-        self.assertEqual(len(reasons), 1)
-        self.assertIn("inference_deals evaluator", reasons.pop())
-
     def test_sample_fixtures_name_their_own_pack(self):
         for name, path in self.SAMPLES.items():
             doc = json.loads((path.parent / "fixtures/two-case.json").read_text())
@@ -393,6 +468,128 @@ class ConductIsAScopeKind(unittest.TestCase):
         b = copy.deepcopy(a)
         b["scope"]["kind"] = "after_the_fact"
         self.assertNotEqual(pack_compile.source_digest(a), pack_compile.source_digest(b))
+
+
+def shutil_rmtree(path):
+    import shutil
+    shutil.rmtree(path)
+
+
+class AdmissionEngine(unittest.TestCase):
+    """`terms test` on an admission pack, with a capsule-engine named by --engine. The fake
+    engine below checks the plumbing (what is run, what is read back, what is refused); the
+    real binary is exercised when CAPSULE_ENGINE names one."""
+    SAMPLE = ROOT / "tests/fixtures/terms-samples/admission/pack-source.yaml"
+
+    def fake(self, body):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        f = pathlib.Path(d.name) / "capsule-engine"
+        f.write_text("#!/usr/bin/env python3\nimport json, sys\n" + body)
+        f.chmod(0o755)
+        return str(f)
+
+    SHA = "f5a84681835498907da70615701cca7b08edd465"
+
+    def setUp(self):
+        self.info = unittest.mock.patch.object(
+            case_eval, "build_info", side_effect=lambda p: f"{p}: go1\n\tbuild\tvcs.revision={self.SHA}\n")
+        self.info.start()
+        self.addCleanup(self.info.stop)
+
+    # An engine that fails the `attestation` row when the input says the attestation is invalid.
+    ENGINE = """
+a = sys.argv
+inp = json.load(open(a[a.index("--input") + 1]))
+bad = inp.get("platform", {}).get("release_attestation") == "invalid"
+denied = inp.get("operator", {}).get("deny_listed") is True
+print(json.dumps({"verdict": "NO", "rows": [
+    {"row": "attestation", "result": "fail" if bad else "pass", "effect": "NO"},
+    {"row": "deny-list", "result": "fail" if denied else "pass", "effect": "NO"}]}))
+"""
+
+    def test_cases_are_decided_by_the_engine_and_it_is_named(self):
+        engine = self.fake(self.ENGINE)
+        code, res = run_test(self.SAMPLE, "--engine", engine)
+        self.assertEqual((code, res["passed"], res["evaluated"], res["not_evaluated"]), (0, True, 4, 0), res)
+        self.assertEqual(res["rows"][0]["decided_by"]["name"], "capsule-engine")
+        self.assertEqual(res["rows"][0]["decided_by"]["path"], str(pathlib.Path(engine).resolve()))
+        self.assertRegex(res["rows"][0]["pack_digest"], "^[0-9a-f]{64}$")
+
+    def test_a_row_the_engine_decides_otherwise_fails(self):
+        engine = self.fake(self.ENGINE.replace('"pass"', '"fail"', 1))
+        code, res = run_test(self.SAMPLE, "--engine", engine)
+        self.assertEqual((code, res["passed"]), (1, False), res)
+
+    def test_a_refusing_engine_leaves_the_row_unrun(self):
+        engine = self.fake("sys.stderr.write('bad pack'); sys.exit(2)")
+        code, res = run_test(self.SAMPLE, "--engine", engine)
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0), res)
+        self.assertIn("bad pack", res["rows"][0]["reason"])
+
+    def test_an_engine_that_cannot_start_leaves_the_rows_unrun(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        f = pathlib.Path(d.name) / "capsule-engine"
+        f.write_text("#!/nonexistent/interpreter\n")
+        f.chmod(0o755)
+        code, res = run_test(self.SAMPLE, "--engine", str(f))
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0), res)
+        self.assertIn("could not decide", res["rows"][0]["reason"])
+
+    def test_a_missing_engine_leaves_the_rows_unrun(self):
+        code, res = run_test(self.SAMPLE, "--engine", "/nonexistent/capsule-engine")
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0), res)
+
+    def test_the_build_commit_is_reported_and_a_matching_pin_runs(self):
+        engine = self.fake(self.ENGINE)
+        code, res = run_test(self.SAMPLE, "--engine", engine, "--engine-commit", self.SHA[:8])
+        self.assertEqual((code, res["passed"]), (0, True), res)
+        self.assertEqual(res["rows"][0]["decided_by"]["commit"], self.SHA)
+
+    def test_an_engine_with_no_known_build_revision_is_not_used(self):
+        engine = self.fake(self.ENGINE)
+        with unittest.mock.patch.object(case_eval, "build_info", return_value=""):
+            code, res = run_test(self.SAMPLE, "--engine", engine)
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0), res)
+        self.assertIn("build revision is unknown", res["rows"][0]["reason"])
+
+    def test_a_locally_modified_build_does_not_satisfy_a_pin(self):
+        engine = self.fake(self.ENGINE)
+        info = f"build\tvcs.revision={self.SHA}\nbuild\tvcs.modified=true\n"
+        with unittest.mock.patch.object(case_eval, "build_info", return_value=info):
+            code, res = run_test(self.SAMPLE, "--engine", engine, "--engine-commit", self.SHA)
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0), res)
+        self.assertIn("local changes", res["rows"][0]["reason"])
+
+    def test_a_bare_engine_name_runs_the_file_it_identifies(self):
+        engine = self.fake(self.ENGINE)
+        path = str(pathlib.Path(engine).parent)
+        with unittest.mock.patch.dict("os.environ", {"PATH": path + os.pathsep + os.environ["PATH"]}):
+            code, res = run_test(self.SAMPLE, "--engine", "capsule-engine")
+        self.assertEqual((code, res["passed"]), (0, True), res)
+        self.assertEqual(res["rows"][0]["decided_by"]["path"], str(pathlib.Path(engine).resolve()))
+
+    def test_an_engine_not_built_from_the_pinned_commit_is_not_used(self):
+        engine = self.fake(self.ENGINE)
+        code, res = run_test(self.SAMPLE, "--engine", engine, "--engine-commit", "abc123")
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, None, 0), res)
+        self.assertIn("pinned abc123", res["rows"][0]["reason"])
+
+
+class RealAdmissionEngine(unittest.TestCase):
+    """The real capsule-engine, with nothing mocked: CI builds it at CAPSULE_ENGINE_REF."""
+    SAMPLE = AdmissionEngine.SAMPLE
+
+    @unittest.skipUnless(os.environ.get("CAPSULE_ENGINE"), "CAPSULE_ENGINE names no capsule-engine build")
+    def test_the_real_engine_decides_the_sample_pack_and_names_its_commit(self):
+        code, res = run_test(self.SAMPLE)
+        self.assertEqual((code, res["passed"], res["evaluated"]), (0, True, 4), res)
+        ref = os.environ.get("CAPSULE_ENGINE_REF")
+        for r in res["rows"]:
+            self.assertRegex(r["decided_by"]["commit"], "^[0-9a-f]{40}$")
+            if ref:
+                self.assertEqual(r["decided_by"]["commit"], ref)
 
 
 if __name__ == "__main__":
