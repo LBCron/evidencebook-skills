@@ -682,8 +682,9 @@ def pack_folder(args):
 
 def cmd_studio(args):
     ws, path, folder = pack_folder(args)
+    inside(ws, path)  # SRC is read through its link target: a link out of the workspace is refused
     try:
-        current = deal_pack.compiled(load_pack(args.src))["definition_digest"]
+        current = deal_pack.compiled(load_pack(path))["definition_digest"]
     except TermsError as e:
         raise TermsError(f"{args.src} does not lint, so the page cannot say what was tried: {e}")
     view = studio_view.build(ws, folder, current)

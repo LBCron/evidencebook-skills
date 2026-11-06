@@ -111,6 +111,16 @@ class Input(Base):
         with self.assertRaisesRegex(studio_view.StudioError, "outside the workspace"):
             studio_view.build(self.ws, self.src.parent)
 
+    def test_a_source_linked_from_outside_the_workspace_is_refused(self):
+        self.run_pack(self.src, "--dry-run")
+        outside = pathlib.Path(self.tmp.name) / "outside.yaml"
+        outside.write_bytes(self.src.read_bytes())
+        self.src.unlink()
+        self.src.symlink_to(outside)
+        code, res = call("studio", self.src, "--workspace", self.ws, "--viewer", "/nowhere")
+        self.assertEqual(code, 1)
+        self.assertIn("outside the workspace", res["error"])
+
     def test_verify_answers_a_corrupt_snapshot_in_words(self):
         for body in ("[]", "null", "{not json"):
             page = pathlib.Path(self.tmp.name) / "p.html"
