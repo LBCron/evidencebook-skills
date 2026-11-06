@@ -1,0 +1,53 @@
+{
+  "pack": "asg/admission_sample/0.1.0",
+  "cases": [
+    {
+      "row": "attestation",
+      "case": "met",
+      "input": {
+        "now": "2026-11-05T12:00:00Z",
+        "amount": "500",
+        "currency": "sat",
+        "platform": {
+          "release_attestation": "valid"
+        }
+      }
+    },
+    {
+      "row": "attestation",
+      "case": "not_met",
+      "input": {
+        "now": "2026-11-05T12:00:00Z",
+        "amount": "500",
+        "currency": "sat",
+        "platform": {
+          "release_attestation": "invalid"
+        }
+      }
+    },
+    {
+      "row": "deny-list",
+      "case": "met",
+      "input": {
+        "now": "2026-11-05T12:00:00Z",
+        "amount": "500",
+        "currency": "sat",
+        "operator": {
+          "deny_listed": false
+        }
+      }
+    },
+    {
+      "row": "deny-list",
+      "case": "not_met",
+      "input": {
+        "now": "2026-11-05T12:00:00Z",
+        "amount": "500",
+        "currency": "sat",
+        "operator": {
+          "deny_listed": true
+        }
+      }
+    }
+  ]
+}

@@ -62,6 +62,16 @@ way.
   Studio's `scripts/studio/terms` (`lint`, `test`, `run --dry-run`, `verify`,
   `compare`, `publish`) and the [`terms-pack-author`](skills/terms-pack-author/SKILL.md)
   skill author, rehearse and publish it; `run` writes only into the workspace it is given.
+  Every pack is one `pack-source.yaml`, told apart by `scope.kind` (admission, deal,
+  conduct, live, and the report kind, `after_the_fact`, which is also what an absent
+  scope means). [`schemas/pack-source.schema.json`](schemas/pack-source.schema.json)
+  is its JSON Schema: `terms lint` checks any kind against it and names the field
+  that breaks it, then runs the kind's cross-field rules. `terms test` runs the met
+  and not-met case of every row: a deal pack's by its evaluator, any other kind's
+  from `fixtures/two-case.json` beside the pack, checked against the pack and
+  reported `evaluated: false` because capsule-engine or a pinned judge decides them,
+  not this script. A `conduct` pack is private: it is judged only for its owner and
+  is never sent to a counterparty.
   `admission-baseline` is an admission pack (`scope.kind: admission`,
   [`docs/admission-pack-profile-v0.md`](docs/admission-pack-profile-v0.md)):
   the policy a relying party runs before an act, over what it received about a

@@ -47,6 +47,8 @@ invalid pack source before writing anything, reporting every issue found, in the
 `{"valid": bool, "issues": [...]}` shape `capsulectl contract validate --json`
 uses.
 
+A pack source with `scope: {kind: conduct}` is a private pack (judged only for its
+owner, never sent to a counterparty) in the same form as an after-the-fact one.
 A pack source with `scope: {kind: live}` (absent means `after_the_fact`) is a
 capsule-engine live pack; scripts/live_pack.py validates it, and `compile` writes
 contract.json (the Evidence Contract) and pack-definition.json (the engine's pack
@@ -152,7 +154,7 @@ def load_source(text):
     # Only a source that is after_the_fact as written is stripped: a kind that is
     # neither (" live ") is left as is and refused by validate_scope, never
     # stripped into a live source.
-    return _strip_strings(source) if live_pack.scope_kind(source) == "after_the_fact" else source
+    return _strip_strings(source) if live_pack.scope_kind(source) in ("after_the_fact", "conduct") else source
 
 
 def _build_outcome_report_presentation(source):

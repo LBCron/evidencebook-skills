@@ -77,8 +77,10 @@ import rfc8785
 import yaml
 
 # `admission` (an admission pack, #51) is validated by scripts/admission_pack.py,
-# `deal` (a seller's deal terms, #117) by scripts/deal_pack.py.
-SCOPE_KINDS = ("live", "after_the_fact", "admission", "deal")
+# `deal` (a seller's deal terms, #117) by scripts/deal_pack.py. `conduct` (a
+# private pack, judged only for its owner and never sent to a counterparty;
+# PRD v5 section 5) has the judgment form of `after_the_fact` under its own kind.
+SCOPE_KINDS = ("live", "after_the_fact", "admission", "deal", "conduct")
 DEFAULT_SCOPE_KIND = "after_the_fact"
 
 # capsule-engine's closed sets (packs/schema.py, compiler/vocabulary.py,

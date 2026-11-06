@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """terms -- the Terms Pack Studio verbs for a seller's deal terms pack.
 
-    terms lint    SRC
+    terms lint    SRC   (any kind: admission, deal, conduct, live, report)
     terms test    SRC
     terms run     SRC (--deals FILE | --exports DIR | --store HOME) [--dry-run] [--workspace DIR]
     terms verify  PAGE
@@ -45,11 +45,14 @@ sys.path.insert(0, str(ROOT / "scripts" / "studio"))
 import rfc8785  # noqa: E402
 import yaml  # noqa: E402
 
+import admission_pack  # noqa: E402
 import deal_pack  # noqa: E402
 import deal_store  # noqa: E402
 import pack_compile  # noqa: E402
+import pack_schema  # noqa: E402
 import result_v0  # noqa: E402
 import transaction  # noqa: E402
+import two_case  # noqa: E402
 
 DEFAULT_WORKSPACE = "~/studio"
 
@@ -222,20 +225,59 @@ The record below is the same bytes as <code>result.json</code>; its SHA-256 is <
 """
 
 
+def lint_source(path):
+    """(kind, issues) of a pack source of any kind: the schema first, naming each
+    field that breaks it, then the kind's own cross-field rules on a source the
+    schema accepts (so no rule is reported twice)."""
+    text = path.read_text()
+    try:
+        source = pack_compile.load_source(text)
+    except yaml.YAMLError as e:
+        return None, [f"cannot read {path}: {e}"]
+    kind = pack_schema.kind_of(source)
+    issues = pack_schema.schema_issues(source)
+    if not issues:
+        issues = pack_compile.validate_source(source, path.parent)
+        if admission_pack.is_admission(source):
+            issues = admission_pack.text_issues(text) + issues
+    return kind, issues
+
+
 def cmd_lint(args):
     path = pathlib.Path(args.src)
     try:
-        source = pack_compile.load_source(path.read_text())
-    except (OSError, yaml.YAMLError) as e:
+        kind, issues = lint_source(path)
+    except OSError as e:
         return out({"valid": False, "issues": [f"cannot read {args.src}: {e}"]}, 1)
-    if not deal_pack.is_deal(source):
-        return out({"valid": False, "issues": ["scope.kind must be deal"]}, 1)
-    issues = lint_issues(source)
-    return out({"valid": not issues, "issues": issues}, 0 if not issues else 1)
+    return out({"valid": not issues, "kind": kind, "issues": issues}, 0 if not issues else 1)
 
 
 def cmd_test(args):
-    source = load_pack(args.src)
+    """Lint, then run the two cases (met, not met) of every row, on any kind."""
+    path = pathlib.Path(args.src)
+    try:
+        kind, issues = lint_source(path)
+    except OSError as e:
+        return out({"passed": False, "issues": [f"cannot read {args.src}: {e}"]}, 1)
+    if issues:
+        return out({"passed": False, "kind": kind, "issues": issues}, 1)
+    if kind == "deal":
+        return test_deal(load_pack(args.src))
+    source = pack_compile.load_source(path.read_text())
+    cases, issues = two_case.read_cases(path, source)
+    if issues:
+        return out({"passed": False, "kind": kind, "issues": issues}, 1)
+    reason = (f"a {kind} pack's cases are decided by capsule-engine, which terms test does not run"
+              if kind in ("admission", "live") else
+              f"a {kind} pack's cases are judged by its pinned judge, which terms test does not run")
+    rows = [{"row": r, "met_case": "not_evaluated", "miss_case": "not_evaluated", "evaluated": False, "reason": reason}
+            for r in two_case.row_ids(source)]
+    # Nothing was run, so nothing passed: `passed` is null, and the exit code says the fixtures are sound.
+    return out({"passed": None, "fixtures_valid": True, "kind": kind, "cases": len(cases),
+                "evaluated": 0, "not_evaluated": len(cases), "rows": rows}, 0)
+
+
+def test_deal(source):
     results, failed = [], False
     for row in source["rows"]:
         name, arg = transaction.parse_check(row["check"])
@@ -245,8 +287,8 @@ def cmd_test(args):
         ok = got == ("met", "not_met")
         failed |= not ok
         results.append({"row": row["id"], "check": row["check"], "passed": ok,
-                        "met_case": got[0], "miss_case": got[1]})
-    return out({"passed": not failed, "rows": results}, 1 if failed else 0)
+                        "met_case": got[0], "miss_case": got[1], "evaluated": True})
+    return out({"passed": not failed, "kind": "deal", "rows": results}, 1 if failed else 0)
 
 
 def next_run_dir(ws, pack_id):
