@@ -83,6 +83,12 @@ class Input(Base):
         self.assertEqual(len({json.dumps(p["shared"]) for p in view["packs"]}), 1)  # one dataset and plan, cited by both pages
         self.assertEqual(len({p["bundle_digest"] for p in view["packs"]}), 2)  # two Results, two bundles
 
+    def test_bundle_digest_is_the_digest_the_report_page_prints_for_its_own_record(self):
+        run = self.run_pack(self.src, "--dry-run")
+        report = (pathlib.Path(run["run"]) / "report.html").read_text()
+        (entry,) = studio_view.build(self.ws, self.src.parent)["packs"]
+        self.assertIn(f'id="result-digest">{entry["bundle_digest"]}<', report)
+
     def test_a_deleted_report_is_said_in_words(self):
         run = self.run_pack(self.src)
         (pathlib.Path(run["run"]) / "report.html").unlink()
