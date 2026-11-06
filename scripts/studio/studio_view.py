@@ -4,14 +4,18 @@
 section 2) from files `terms` verbs already wrote, and from nothing else (the pack's title is read from its pack-source.yaml):
 
     packs/<id>/workspace.json   the dataset digest, the latest run (`last_run`)
-    runs/<id>/<n>/result.json   `x-pack.definition_digest`, the pack digest of that run
+    runs/<id>/<n>/result.json   `x-pack.definition_digest` (the pack digest of that run), `dataset_ref`, `plan_ref`
+                                (Result spec 7.3), and its own bytes, whose SHA-256 is the page's bundle digest
     runs/<id>/<n>/report.html   the pack's report page, linked from the switch
     packs/<id>/readiness.json   the active pack's readiness table
     packs/<id>/history.jsonl    the active pack's lines, one per pack digest
 
-One Result per bundle (Steven's ruling): each pack's page cites the digest of the sales it was
-run over, `shared = {kind: dataset_ref, digest: workspace.json dataset.sales_digest}`. A deal
-Result names no judge, so `judge` is left out. `render` hands the input to capsule-viewer's
+One Result per bundle (Steven's ruling): each pack's page carries its own Result, and the pages
+cite the same `shared = {dataset_ref, plan_ref}` when their Results name the same ones, both read
+from the run's Result (`terms run` sets them, evidencebook-skills#146). A `terms run` report page
+has no sealed bundle: it embeds result.json and prints that file's SHA-256, so `bundle_digest` is
+the SHA-256 of result.json, the one digest of "the page's own bundle" that page states itself.
+A deal Result names no judge, so `judge` is left out. `render` hands the input to capsule-viewer's
 `studioViewDocument` through studio_page.mjs; the renderer is not reimplemented here.
 
 `snapshot` is what `terms verify` checks on the page: the SHA-256 of the embedded input against
@@ -30,7 +34,6 @@ import workspace as wsm
 
 SCHEMA = "studio-view/v0"
 BRIDGE = pathlib.Path(__file__).with_name("studio_page.mjs")
-SHARED_KIND = "dataset_ref"
 
 
 class StudioError(ValueError):
@@ -73,15 +76,16 @@ def _entry(ws, folder):
             _within(ws, run / name)
         if not (run / name).is_file():
             raise StudioError(f"{run / name} is missing: `terms run` the pack {folder.name} again")
+    raw = (run / "result.json").read_bytes()
     try:
-        digest = json.loads((run / "result.json").read_text(encoding="utf-8"))["x-pack"]["definition_digest"]
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        raise StudioError(f"{run / 'result.json'} is not a terms Result: {e}")
-    dataset = st.get("dataset")
-    if not isinstance(dataset, dict) or not dataset.get("sales_digest"):
-        raise StudioError(f"{folder / 'workspace.json'} names no dataset digest: `terms run` the pack {folder.name} over its sales")
+        result = json.loads(raw)
+        digest = result["x-pack"]["definition_digest"]
+        refs = {k: result[k]["digest"] for k in ("dataset_ref", "plan_ref")}
+    except (ValueError, KeyError, TypeError) as e:
+        raise StudioError(f"{run / 'result.json'} is not a terms Result that names its dataset and plan: {e}; "
+                          f"`terms run` the pack {folder.name} again")
     entry = {"pack_id": folder.name, "pack_digest": digest, "page": (run / "report.html").relative_to(ws).as_posix(),
-             "shared": {"kind": SHARED_KIND, "digest": dataset["sales_digest"]}}
+             "bundle_digest": hashlib.sha256(raw).hexdigest(), "shared": refs}
     title = _title(ws, folder)
     if title:
         entry["title"] = title

@@ -64,10 +64,11 @@ class Input(Base):
         view = studio_view.build(self.ws, self.src.parent)
         self.assertEqual((view["schema"], view["active"]), ("studio-view/v0", "stickers"))
         (entry,) = view["packs"]
-        st = json.loads((self.src.parent / "workspace.json").read_text())
+        result = json.loads((pathlib.Path(run["run"]) / "result.json").read_text())
         self.assertEqual(entry["pack_digest"], run["pack_digest"])
         self.assertEqual(entry["page"], "runs/stickers/001/report.html")
-        self.assertEqual(entry["shared"], {"kind": "dataset_ref", "digest": st["dataset"]["sales_digest"]})
+        self.assertEqual(entry["shared"], {"dataset_ref": result["dataset_ref"]["digest"], "plan_ref": result["plan_ref"]["digest"]})
+        self.assertEqual(entry["bundle_digest"], run["result_sha256"])
         self.assertNotIn("judge", entry)
         self.assertEqual(view["readiness"], json.loads((self.src.parent / "readiness.json").read_text()))
         self.assertEqual(view["history"], [json.loads(l) for l in (self.src.parent / "history.jsonl").read_text().splitlines()])
@@ -79,7 +80,8 @@ class Input(Base):
         view = studio_view.build(self.ws, self.src.parent)
         self.assertEqual([p["pack_id"] for p in view["packs"]], ["late", "stickers"])
         self.assertNotIn("never-run", [p["pack_id"] for p in view["packs"]])
-        self.assertEqual(len({p["shared"]["digest"] for p in view["packs"]}), 1)  # one dataset, cited by both pages
+        self.assertEqual(len({json.dumps(p["shared"]) for p in view["packs"]}), 1)  # one dataset and plan, cited by both pages
+        self.assertEqual(len({p["bundle_digest"] for p in view["packs"]}), 2)  # two Results, two bundles
 
     def test_a_deleted_report_is_said_in_words(self):
         run = self.run_pack(self.src)
@@ -166,6 +168,9 @@ class Page(Base):
                        'data-pack="stickers"', 'data-pack="late"', "runs/late/001/report.html"):
             self.assertIn(needle, text)
         self.assertNotIn("never-run", text)
+        refs = json.loads((self.ws / "runs/stickers/001/result.json").read_text())
+        for digest in (refs["dataset_ref"]["digest"], refs["plan_ref"]["digest"]):
+            self.assertIn(digest, text)  # the switch cites the Result's own refs
         declared, actual, view = studio_view.snapshot(text)
         self.assertEqual((declared, actual), (res["snapshot_sha256"], res["snapshot_sha256"]))
         self.assertEqual(view["active"], "stickers")
