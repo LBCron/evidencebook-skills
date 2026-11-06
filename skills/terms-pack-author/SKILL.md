@@ -137,6 +137,11 @@ Do not invent a row, a check or a field, and do not stretch one of the three to 
    seller this was a rehearsal: nothing is switched on. The answer's `page` is a report
    page; tell the seller where it is so they can open it, and that it holds the same record
    the numbers come from. `terms verify PAGE` checks a page against its own record.
+   To show the seller the whole workspace on one page (the loop, the readiness desk, the term map
+   and a switch to every pack's report), run `terms studio SRC --viewer DIR`, where DIR is a
+   capsule-viewer build with the Studio page (or set `CAPSULE_VIEWER`); it writes the page to `studio.html`
+   in the workspace and prints its path. The page is a snapshot of workspace files, not sealed evidence: `terms verify` on it
+   checks that snapshot only, and each pack's report page keeps its own `terms verify`.
 5. **When the seller changes a term**, edit the row (both places), bump the version, run
    lint, test and run again, then
    `terms compare RUN_BEFORE RUN_AFTER` with the two `run` folders the runs reported (or

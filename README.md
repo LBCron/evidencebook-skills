@@ -60,7 +60,7 @@ way.
   over whole closed periods, this one a flat record per sale, so they share no
   inputs and no code. Terms Pack
   Studio's `scripts/studio/terms` (`init`, `readiness`, `lint`, `test`, `run --dry-run`, `verify`,
-  `compare`, `publish`, `history`, `checkout`) and the [`terms-pack-author`](skills/terms-pack-author/SKILL.md)
+  `compare`, `publish`, `history`, `checkout`, `studio`) and the [`terms-pack-author`](skills/terms-pack-author/SKILL.md)
   skill author, rehearse and publish it; `run` writes only into the workspace it is given (`init` starts a workspace pack from past
   sales with a field census and a readiness table of each term; `lint` and `test` refresh that table). The workspace
   also remembers the dataset and keeps one history line per pack digest, so another agent or a shell continues from the

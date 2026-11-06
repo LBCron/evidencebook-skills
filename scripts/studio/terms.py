@@ -7,6 +7,7 @@
     terms test    SRC [--engine PATH | --live-engine PATH] [--engine-commit SHA]
     terms run     SRC [--deals FILE | --exports DIR | --store HOME] [--dry-run] [--workspace DIR]   (no sales flag: the dataset the pack's workspace remembers)
     terms verify  PAGE
+    terms studio  SRC [--viewer DIR] [--workspace DIR]   (the Studio page, <workspace>/studio.html, from the workspace files)
     terms compare A B [--workspace DIR]      (A, B: a run, or a pack digest from `history`)
     terms history SRC [--workspace DIR]      (dataset, last run, readiness, one line per pack digest)
     terms checkout SRC DIGEST [--force] [--workspace DIR]   (undo: restore that digest's source; then run and compare)
@@ -30,7 +31,7 @@ writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html,plan.json,datas
 writes published/<pack_id>/<digest>/; both also keep packs/<pack_id>/{workspace.json,
 history.jsonl,history/} (the dataset, the last run, one line per pack digest; see
 scripts/studio/workspace.py), `checkout` overwrites SRC (inside the workspace) and
-`keep-transcript` writes packs/<pack_id>/private/. --deals and the Results `compare`
+`keep-transcript` writes packs/<pack_id>/private/ and `studio` writes studio-view.json and studio.html at the workspace root. --deals and the Results `compare`
 reads are only read. With no --workspace or $TERMS_WORKSPACE, a SRC inside a pack folder
 `init` made names its own workspace.
 
@@ -72,6 +73,7 @@ import pack_compile  # noqa: E402
 import pack_schema  # noqa: E402
 import readiness  # noqa: E402
 import result_v0  # noqa: E402
+import studio_view  # noqa: E402
 import transaction  # noqa: E402
 import two_case  # noqa: E402
 import workspace as wsm  # noqa: E402
@@ -530,6 +532,8 @@ def cmd_verify(args):
     except OSError as e:
         return out({"verified": False, "issues": [f"cannot read {args.page}: {e}"]}, 1)
     m = _SCRIPT.search(text)
+    if not m and studio_view.snapshot(text) is not None:
+        return verify_studio(text)
     if not m:
         return out({"verified": False, "issues": ["the page carries no terms-result record"]}, 1)
     declared, rehearsal, pack_digest, body = m.groups()
@@ -555,6 +559,18 @@ def cmd_verify(args):
     return out({"verified": not issues, "issues": issues, "came_through": met, "sales": total,
                 "rehearsal": bool(result.get("x-rehearsal")), "pack_digest": pack_digest,
                 "result_sha256": declared}, 1 if issues else 0)
+
+
+def verify_studio(text):
+    """A Studio page checks against itself and nothing more: its embedded input against the digest it prints."""
+    declared, actual, view = studio_view.snapshot(text)
+    issues = [] if declared == actual else ["the embedded studio input does not match the digest the page states"]
+    if view is None:
+        issues.append("the embedded studio input is not a JSON object")
+    return out({"verified": not issues, "scope": "snapshot", "issues": issues,
+                "note": "checks the snapshot only: the page's own embedded input against its printed digest. "
+                        "The workspace files it was made from are not sealed evidence, and no report page was checked.",
+                "active": (view or {}).get("active"), "snapshot_sha256": declared}, 1 if issues else 0)
 
 
 def read_result(arg, ws=None):
@@ -664,6 +680,25 @@ def pack_folder(args):
     return ws, path, inside(ws, ws / "packs" / pack_id)
 
 
+def cmd_studio(args):
+    inside(workspace_of(args, create=False), pathlib.Path(args.src))  # before any read: a link out of the workspace is refused
+    ws, path, folder = pack_folder(args)
+    try:
+        current = deal_pack.compiled(load_pack(path))["definition_digest"]
+    except TermsError as e:
+        raise TermsError(f"{args.src} does not lint, so the page cannot say what was tried: {e}")
+    view = studio_view.build(ws, folder, current)
+    viewer = args.viewer or os.environ.get("CAPSULE_VIEWER")
+    page = studio_view.render(view, viewer)
+    # written whole or not at all (Ctrl-C mid-write leaves the earlier page), links refused
+    wsm._write(ws / "studio-view.json", json.dumps(view, indent=2) + "\n")
+    wsm._write(ws / "studio.html", page)
+    declared = studio_view.snapshot(page)[0]
+    return out({"page": str(ws / "studio.html"), "input": str(ws / "studio-view.json"), "active": view["active"],
+                "packs": [p["pack_id"] for p in view["packs"]], "snapshot_sha256": declared,
+                "note": "a snapshot of workspace files, not sealed evidence; `terms verify` on the page checks the snapshot only"})
+
+
 def cmd_history(args):
     ws, path, folder = pack_folder(args)
     st = wsm.state(folder)
@@ -731,6 +766,10 @@ def main(argv):
     p.add_argument("--workspace")
     p = sub.add_parser("readiness")
     p.add_argument("src")
+    p = sub.add_parser("studio")
+    p.add_argument("src", help="the pack the page shows (its readiness and history); every pack with a run is in the switch")
+    p.add_argument("--viewer", help="a capsule-viewer build with the Studio page (a directory holding dist/index.js; default: $CAPSULE_VIEWER)")
+    p.add_argument("--workspace")
     p = sub.add_parser("verify")
     p.add_argument("page")
     p = sub.add_parser("compare")
@@ -752,12 +791,12 @@ def main(argv):
     args = ap.parse_args(argv)
     try:
         code = {"lint": cmd_lint, "test": cmd_test, "run": cmd_run, "verify": cmd_verify, "init": cmd_init,
-                "readiness": cmd_readiness, "compare": cmd_compare, "publish": cmd_publish, "history": cmd_history,
+                "readiness": cmd_readiness, "studio": cmd_studio, "compare": cmd_compare, "publish": cmd_publish, "history": cmd_history,
                 "checkout": cmd_checkout, "keep-transcript": cmd_keep_transcript}[args.cmd](args)
         if args.cmd in ("lint", "test"):
             refresh_or_say(args.src)
         return code
-    except (TermsError, result_v0.RollupError, ValueError) as e:  # WorkspaceError is a ValueError
+    except (TermsError, result_v0.RollupError, ValueError) as e:  # WorkspaceError and StudioError are ValueErrors
         return out({"error": str(e)}, 1)
 
 
