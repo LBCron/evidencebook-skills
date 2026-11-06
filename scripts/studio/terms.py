@@ -686,11 +686,9 @@ def cmd_studio(args):
     view = studio_view.build(ws, folder)
     viewer = args.viewer or os.environ.get("CAPSULE_VIEWER")
     page = studio_view.render(view, viewer)
-    for name in ("studio-view.json", "studio.html"):
-        if (ws / name).is_symlink():
-            raise TermsError(f"{ws / name} is a link; refusing to write through it")
-    (ws / "studio-view.json").write_text(json.dumps(view, indent=2) + "\n", encoding="utf-8")
-    (ws / "studio.html").write_text(page, encoding="utf-8")
+    # written whole or not at all (Ctrl-C mid-write leaves the earlier page), links refused
+    wsm._write(ws / "studio-view.json", json.dumps(view, indent=2) + "\n")
+    wsm._write(ws / "studio.html", page)
     declared = studio_view.snapshot(page)[0]
     return out({"page": str(ws / "studio.html"), "input": str(ws / "studio-view.json"), "active": view["active"],
                 "packs": [p["pack_id"] for p in view["packs"]], "snapshot_sha256": declared,
