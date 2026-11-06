@@ -206,8 +206,11 @@ class Page(Base):
         res = self.studio()
         embedded = studio_view.snapshot(pathlib.Path(res["page"]).read_text())[2]
         written = json.loads(pathlib.Path(res["input"]).read_text())
-        for key in ("schema", "active", "history"):
+        for key in ("schema", "active"):
             self.assertEqual(embedded[key], written[key])
+        # the renderer normalizes the input (an absent in_force is drawn as null); nothing here ever writes one
+        self.assertEqual([{k: v for k, v in e.items() if k != "in_force"} for e in embedded["history"]], written["history"])
+        self.assertTrue(all(e.get("in_force") is None for e in embedded["history"]))
         self.assertEqual([p["pack_id"] for p in embedded["packs"]], ["stickers"])
         # the renderer normalizes the input: filled_rate is accepted and dropped, the terms stay
         self.assertEqual([t["term"] for t in embedded["readiness"]["terms"]], [t["term"] for t in written["readiness"]["terms"]])
@@ -216,13 +219,15 @@ class Page(Base):
         self.run_pack(self.src, "--dry-run")
         code, res = call("publish", self.src, "--workspace", self.ws)
         self.assertEqual(code, 0, res)  # the first digest is published; the edited one is not
-        self.assertIn('data-stage="switched_on" data-state="done"', pathlib.Path(self.studio()["page"]).read_text())
+        text = pathlib.Path(self.studio()["page"]).read_text()
+        self.assertIn('data-stage="published" data-state="done"', text)
+        self.assertIn('data-stage="switched_on" data-state="not-recorded"', text)  # a publish is not an install; we write no in_force
         text = self.src.read_text()
         self.src.write_text(text.replace("pack_version: 0.1.0", "pack_version: 0.1.1").replace("within 2 days", "within 3 days").replace("delivered_within_days(2)", "delivered_within_days(3)"))
         self.run_pack(self.src)  # a real run under the new digest
         text = pathlib.Path(self.studio()["page"]).read_text()
         self.assertIn('data-stage="tried" data-state="done"', text)
-        self.assertIn('data-stage="switched_on" data-state="not-yet"', text)
+        self.assertIn('data-stage="published" data-state="not-yet"', text)
 
 
 if __name__ == "__main__":
