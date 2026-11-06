@@ -12,7 +12,7 @@ past sales", "came through", "missed", "could not decide".
 
 Every command below is `terms <verb>`. It prints one JSON answer. Read it and tell the
 seller what it says in a sentence or two; do not paste it. Work in the seller's workspace
-(`~/studio`); the commands write only there (`lint` and `test` only refresh the table beside terms `init` wrote).
+(`~/studio`); the commands write only there (`lint`, `test` and `readiness` also refresh the table beside terms `init` wrote).
 
 ## Starting from past sales, with no terms yet
 
@@ -35,8 +35,8 @@ checked if it is published (`in_pack: true`). The others are ideas kept in `cand
 - **needs the other side**: only the buyer's own record can show it.
 - **not this pack's concern**: it is about the buyer's conduct, not the seller's terms.
 
-Tell the seller what each term is and its status in a sentence each. The sales' contents are not
-sent anywhere or shown to you: you see the field counts and the sales the seller labels.
+Tell the seller what each term is and its status in a sentence each. The sales are not
+sent anywhere or shown to you: you see the field names and counts and the sales the seller labels.
 After any edit or run, `terms readiness ~/studio/packs/NAME/pack-source.yaml` shows the table
 again; `lint`, `test` and `run` also rewrite `readiness.json` beside the terms, and a label
 shows once one of them (or `readiness`) has run. Then continue with the steps below, using the

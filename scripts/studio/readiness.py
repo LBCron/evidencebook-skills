@@ -63,8 +63,8 @@ _NAME = re.compile(r"\A[A-Za-z_][A-Za-z0-9_]{0,39}\Z")
 
 def _walk(prefix, value, found):
     """Add each filled leaf path of one record to `found`; a list contributes its elements under `path[]`.
-    A key that is not a short field name (an email, an id: data held in a key) is written `*`, so the
-    census never carries a value."""
+    A key that is not a short field name (an email, a long id: data held in a key) is written `*`.
+    A short key that holds data still passes: the census names fields, and a dataset should not keep values in keys."""
     if isinstance(value, dict):
         for k in sorted(value, key=str):
             name = str(k) if _NAME.match(str(k)) else "*"

@@ -15,7 +15,7 @@ verb prints one JSON object on stdout and exits 0, or 1 with the reason in it.
 The entry point is scripts/studio/terms (a bare `test` would be the shell's).
 
 `init` reads the sales, writes the field census and a proposed pack under
-<workspace>/packs/<pack_id>/, and `readiness` prints each term's status. `lint`, `test` and
+<workspace>/packs/<pack_id>/, and `readiness` prints (and refreshes) each term's status. `lint`, `test` and
 `run` rewrite readiness.json (and `run` census.json) beside a pack `init` made, so it is
 current after each edit, label (labels.json) or run; that is the one write `lint` and `test`
 make, and `run` makes it only inside the workspace it is given.
@@ -363,16 +363,19 @@ def readiness_table(folder, source):
         raise TermsError(f"{folder / 'candidates.json'} is not a list of candidate terms (id, statement, tier, reads, side)")
     if not isinstance(labels, dict):
         raise TermsError(f"{folder / 'labels.json'} is not a map of term id to labelled sales")
-    return readiness.readiness(source, census_doc, candidates, labels)
+    try:
+        return readiness.readiness(source, census_doc, candidates, labels)
+    except (KeyError, TypeError, AttributeError, ValueError) as e:
+        # valid JSON of the wrong shape, anywhere inside: one refusal, never a traceback
+        raise TermsError(f"a file beside the pack (census.json, candidates.json or labels.json) has the wrong shape: {type(e).__name__} {e}")
 
 
 def cmd_readiness(args):
     path = pathlib.Path(args.src).resolve()
     if not (path.parent / "census.json").is_file():
         raise TermsError(f"no field census beside {args.src}: start the pack with `terms init`")
-    source = rated_source(path)
     try:
-        return out(refresh_readiness(path) or readiness_table(path.parent, source))
+        return out(refresh_readiness(path))
     except OSError as e:
         raise TermsError(str(e))
 

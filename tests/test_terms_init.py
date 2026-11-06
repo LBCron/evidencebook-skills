@@ -205,6 +205,58 @@ class Init(unittest.TestCase):
         self.assertEqual(call("run", res["pack"], "--deals", self.deals, "--dry-run", "--workspace", other)[0], 0)
         self.assertEqual((folder / "census.json").read_text(), before)
 
+    def test_wrong_shapes_inside_helper_files_never_crash_a_verb(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        census = json.loads((folder / "census.json").read_text())
+        cases = [
+            ("census.json", {"records": 1, "fields": [{}]}),
+            ("census.json", {"fields": []}),
+            ("census.json", dict(census, fields=["x"])),
+            ("census.json", dict(census, evaluable=[1])),
+            ("candidates.json", [{"id": "x", "statement": "s", "tier": "judged", "reads": None, "side": "own"}]),
+            ("candidates.json", [{"id": "x", "statement": "s", "tier": "judged", "reads": 5, "side": "own"}]),
+            ("labels.json", {"matched_description": 5}),
+        ]
+        for name, doc in cases:
+            with self.subTest(name=name, doc=doc):
+                original = (folder / name).read_text() if (folder / name).exists() else None
+                (folder / name).write_text(json.dumps(doc))
+                code, err = call("readiness", res["pack"])
+                if name != "labels.json":
+                    self.assertEqual(code, 1)
+                    self.assertIn("error", err)
+                self.assertEqual(call("lint", res["pack"])[0], 0)
+                if original is None:
+                    (folder / name).unlink()
+                else:
+                    (folder / name).write_text(original)
+
+    def test_init_reads_a_directory_of_deal_exports(self):
+        exports = pathlib.Path(self.tmp.name) / "exports"
+        exports.mkdir()
+        records = [
+            {"body": {"source": "x402_settle_response"}, "x-deal-v0": {"record_type": "evidence", "at": "2026-10-11T10:00:00Z"}},
+            {"body": {"source": "seller_handoff"}, "x-deal-v0": {"record_type": "evidence", "at": "2026-10-11T12:00:00Z"}},
+        ]
+        (exports / "deal-1.json").write_text(json.dumps(records))
+        code, res = call("init", "--exports", exports, "--workspace", self.ws)
+        self.assertEqual(code, 0, res)
+        by = {t["term"]: t for t in res["terms"]}
+        self.assertEqual(by["paid_before_delivered"]["status"], "checkable now")
+        self.assertEqual(by["price_as_offered"]["status"], "needs a field")
+        self.assertIn("offered_price", by["price_as_offered"]["detail"])
+
+    def test_init_refuses_a_packs_folder_linked_out_of_the_workspace(self):
+        outside = pathlib.Path(self.tmp.name) / "outside"
+        outside.mkdir()
+        self.ws.mkdir()
+        (self.ws / "packs").symlink_to(outside)
+        code, err = self.init([self.sale()])
+        self.assertEqual(code, 1)
+        self.assertIn("outside the workspace", err["error"])
+        self.assertEqual(list(outside.iterdir()), [])
+
     def test_init_never_overwrites_a_pack(self):
         self.init([self.sale()])
         code, res = self.init([self.sale()])
