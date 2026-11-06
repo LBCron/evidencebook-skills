@@ -71,7 +71,8 @@ way.
   from `fixtures/two-case.json` beside the pack, checked against the pack and
   reported `evaluated: false` because capsule-engine or a pinned judge decides them,
   not this script. A `conduct` pack is private: it is judged only for its owner and
-  is never sent to a counterparty.
+  nobody else receives or adjudicates it; keeping it out of a counterparty's scoped bundle is
+  enforced where the bundle is built (capsule-emit#422), not by this repository.
   `admission-baseline` is an admission pack (`scope.kind: admission`,
   [`docs/admission-pack-profile-v0.md`](docs/admission-pack-profile-v0.md)):
   the policy a relying party runs before an act, over what it received about a

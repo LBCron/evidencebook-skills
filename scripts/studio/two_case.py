@@ -3,7 +3,7 @@ the row is met and one where it is not met (Terms Pack Studio PRD v5 section 15
 item 1).
 
 A deal pack needs no file: its evaluator (scripts/evaluators/transaction.py) builds
-the two cases of each check itself. Any other kind has `fixtures/two-case.json`
+the two cases of each check itself, the one kind `terms test` can run. Any other kind has `fixtures/two-case.json`
 next to its pack-source.yaml:
 
     {"pack": <pack_id>,
@@ -14,13 +14,13 @@ evaluator input, a report or conduct pack's disclosed facts). The test checks th
 file against the pack: every row has exactly one case of each name, and no case
 names a row the pack does not have. It evaluates a case only when a local
 evaluator exists for the kind. Admission and live packs are decided by
-capsule-engine and judged rows by a pinned judge, neither of which this script
-runs, so those cases are reported `evaluated: false` and never as passed.
+capsule-engine, judged rows by a pinned judge, and a report pack that names an
+`evaluator` by that evaluator over a node's sealed capsule records, none of which
+this script runs, so those cases are reported `evaluated: false` and never as passed.
+The two cases of a row must differ, or the pair says nothing.
 """
 import json
 import pathlib
-
-import jsonschema
 
 import pack_schema
 
@@ -65,6 +65,7 @@ def read_cases(src, source):
         return [], [f"{path} is missing: every row needs a met and a not_met case"]
     except ValueError as e:
         return [], [f"{path} is not JSON: {e}"]
+    import jsonschema  # not at import: the other terms verbs need no schema library
     issues = [f"{path}: {'.'.join(str(p) for p in e.absolute_path) or 'file'}: {e.message}"
               for e in jsonschema.Draft202012Validator(FILE_SCHEMA).iter_errors(doc)]
     if issues:
@@ -80,6 +81,8 @@ def read_cases(src, source):
             issues.append(f"{path}: row {c['row']!r} has two {c['case']} cases")
         seen[(c["row"], c["case"])] = c
     for r in rows:
+        if (r, "met") in seen and (r, "not_met") in seen and seen[(r, "met")]["input"] == seen[(r, "not_met")]["input"]:
+            issues.append(f"{path}: row {r!r} has the same input in its met and not_met cases")
         for name in CASES:
             if (r, name) not in seen:
                 issues.append(f"{path}: row {r!r} has no {name} case")

@@ -959,8 +959,7 @@
                   },
                   "effective_from": {
                     "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                   },
                   "instrument": {
                     "type": "string",
@@ -968,27 +967,24 @@
                     "pattern": "\\S"
                   },
                   "jurisdiction": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
+                    "type": "string"
                   },
                   "paragraph": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
+                    "type": "string"
                   },
                   "source_url": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
+                    "type": "string"
                   },
                   "text_snapshot_digest": {
                     "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
+                    "pattern": "^[0-9a-f]{64}$"
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": false,
+                "required": [
+                  "instrument",
+                  "article"
+                ]
               },
               "profile": {
                 "enum": [
@@ -1075,29 +1071,249 @@
         "constraints": {
           "type": "array",
           "items": {
-            "type": "object"
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "wicket_ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "check": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "scope": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "wicket_ref",
+                  "check",
+                  "digest"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "wicket_id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*/\\d+\\.\\d+\\.\\d+$"
+                  },
+                  "check": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "config": {
+                    "type": "object"
+                  },
+                  "semantics": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "scope": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "minItems": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "wicket_id",
+                  "check"
+                ]
+              }
+            ]
           }
         },
         "folds": {
           "type": "array",
           "items": {
-            "type": "object"
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "file"
+                ]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "fold_ref": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "fold_ref",
+                  "digest"
+                ]
+              }
+            ]
           }
         },
         "profiles": {
           "type": "array",
           "items": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "profile_id": {
+                "enum": [
+                  "p1_external_serve",
+                  "p2_internal_assist",
+                  "p3_mediated",
+                  "p4_agent_to_agent"
+                ]
+              },
+              "counterparty_binding": {
+                "type": "object",
+                "properties": {
+                  "direct": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "ultimate": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "direct"
+                ]
+              },
+              "overrides": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "outcome_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    },
+                    "applies": {
+                      "type": "boolean"
+                    },
+                    "tier": {
+                      "enum": [
+                        "must_have",
+                        "informational"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "outcome_id"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "profile_id",
+              "counterparty_binding"
+            ]
           }
         },
         "proposers": {
           "type": "array",
           "items": {
-            "type": "object"
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "fold_id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "strategy": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "status": {
+                "enum": [
+                  "planned"
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "fold_id",
+              "strategy"
+            ]
           }
         },
         "scope_census": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "document_digest": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "n": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "m": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "review_by": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "document_digest",
+            "n",
+            "m",
+            "review_by"
+          ]
         },
         "holds_integration": {
           "enum": [
@@ -1445,7 +1661,65 @@
           "minItems": 1
         },
         "judge": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "model_id": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "sampling_params": {
+              "type": "object"
+            },
+            "min_confidence": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "reference_files": {
+              "type": "object",
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "booking_db": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "policy",
+                "booking_db"
+              ]
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "minItems": 1
+            },
+            "citation_note": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "model_id"
+          ]
         },
         "evaluator": {
           "enum": [
@@ -1462,7 +1736,30 @@
         },
         "quality_protocol": {},
         "report": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "template": {
+              "enum": [
+                "outcome-report/v1",
+                "eu-ai-act-compliance/v1"
+              ]
+            },
+            "percentages": {
+              "type": "boolean"
+            },
+            "card": {
+              "enum": [
+                "attribution",
+                "human_role",
+                "obligation",
+                "outcome",
+                "process",
+                "quality",
+                "settlement"
+              ]
+            }
+          },
+          "additionalProperties": false
         },
         "reason_code_overrides": {
           "type": "object"

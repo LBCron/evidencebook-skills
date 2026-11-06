@@ -267,9 +267,13 @@ def cmd_test(args):
     cases, issues = two_case.read_cases(path, source)
     if issues:
         return out({"passed": False, "kind": kind, "issues": issues}, 1)
-    reason = (f"a {kind} pack's cases are decided by capsule-engine, which terms test does not run"
-              if kind in ("admission", "live") else
-              f"a {kind} pack's cases are judged by its pinned judge, which terms test does not run")
+    if kind in ("admission", "live"):
+        reason = f"a {kind} pack's cases are decided by capsule-engine, which terms test does not run"
+    elif source.get("evaluator"):
+        reason = (f"the {source['evaluator']} evaluator reads a node's sealed capsule records "
+                  "(scripts/evaluators), which terms test does not build")
+    else:
+        reason = f"a {kind} pack's cases are judged by its pinned judge, which terms test does not run"
     rows = [{"row": r, "met_case": "not_evaluated", "miss_case": "not_evaluated", "evaluated": False, "reason": reason}
             for r in two_case.row_ids(source)]
     # Nothing was run, so nothing passed: `passed` is null, and the exit code says the fixtures are sound.

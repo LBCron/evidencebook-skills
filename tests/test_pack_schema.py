@@ -89,6 +89,10 @@ class SchemaIsTheStructure(unittest.TestCase):
         self.assertEqual(set(self.defs["live"]["properties"]), live_pack.LIVE_KEYS)
         self.assertEqual(set(self.defs["live"]["properties"]["obligations"]["items"]["properties"]), live_pack.OBLIGATION_KEYS)
         self.assertEqual(set(self.defs["live"]["properties"]["outcomes"]["items"]["properties"]), live_pack.OUTCOME_KEYS)
+        self.assertEqual(set(self.defs["after_the_fact"]["properties"]["report"]["properties"]),
+                         set(pack_compile.REPORT_KEYS) | {"card"})
+        self.assertEqual(set(self.defs["live"]["properties"]["outcomes"]["items"]["properties"]["clause"]["properties"]),
+                         live_pack.CLAUSE_KEYS)
 
     def test_closed_value_sets(self):
         live = self.defs["live"]["properties"]
@@ -131,6 +135,14 @@ class BreakingTheSchema(unittest.TestCase):
         self.refused("live", lambda s: s["outcomes"][0].update(forward_verdict="MAYBE"), "outcomes[0].forward_verdict")
         self.refused("live", lambda s: s.update(colour="red"), "colour")
 
+    def test_the_judge_member_is_checked_by_the_schema(self):
+        self.refused("after_the_fact", lambda s: s["judge"].update(model_id=[]), "judge.model_id")
+        self.refused("after_the_fact", lambda s: s["judge"].update(min_confidence=2), "judge.min_confidence")
+        self.refused("after_the_fact", lambda s: s["report"].update(template=[]), "report.template")
+        self.refused("live", lambda s: s["profiles"].append({"profile_id": [], "counterparty_binding": {"direct": "x"}})
+                     if "profiles" in s else s.update(profiles=[{"profile_id": [], "counterparty_binding": {"direct": "x"}}]),
+                     "profiles[")
+
     def test_report(self):
         self.refused("after_the_fact", lambda s: s["checks"][0]["criteria"][0].update(tier="guessed"),
                      "checks[0].criteria[0].tier")
@@ -148,10 +160,26 @@ class BreakingTheSchema(unittest.TestCase):
         source = load(SAMPLES["deal"])
         source["scope"]["kind"] = "receipt"
         self.assertEqual(pack_schema.schema_issues(source),
-                         ["scope.kind 'receipt' must be one of ['admission', 'deal', 'conduct', 'live', 'after_the_fact']"])
+                         ["scope.kind 'receipt' must be one of ['live', 'after_the_fact', 'admission', 'deal', 'conduct']"])
 
     def test_not_a_mapping(self):
         self.assertEqual(pack_schema.schema_issues(["a"]), ["pack source must be a mapping"])
+        self.assertIsNone(pack_schema.kind_of(["a"]))
+
+    def test_a_scope_that_is_not_a_mapping_is_one_issue(self):
+        for scope in ("x", [], None):
+            source = load(SAMPLES["deal"])
+            source["scope"] = scope
+            self.assertEqual(pack_schema.schema_issues(source), ["scope must be a mapping with a kind"], scope)
+
+    def test_an_unquoted_date_as_the_kind_is_refused_and_lint_prints_it(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        p = pathlib.Path(d.name) / "pack-source.yaml"
+        p.write_text("scope:\n  kind: 2026-01-01\npack_id: x\n")
+        code, res = lint(p)
+        self.assertEqual((code, res["valid"], res["kind"]), (1, False, None))
+        self.assertIn("scope.kind", res["issues"][0])
 
 
 class LintCli(unittest.TestCase):
@@ -193,6 +221,45 @@ def run_test(path):
     with contextlib.redirect_stdout(buf):
         code = terms.main(["test", str(path)])
     return code, json.loads(buf.getvalue())
+
+
+FUZZED = [str(p) for p in SAMPLES.values()] + sorted(glob.glob(str(ROOT / "tests/fixtures/terms-samples/*/pack-source.yaml")))
+
+
+def _leaves(o, path=()):
+    if isinstance(o, dict):
+        for k, v in o.items():
+            yield from _leaves(v, path + (k,))
+    elif isinstance(o, list):
+        for i, v in enumerate(o):
+            yield from _leaves(v, path + (i,))
+    yield path
+
+
+class LintNeverCrashes(unittest.TestCase):
+    """The class of defect behind a lint that dies on a malformed member instead of
+    naming it: every member of every pack in the repo, replaced by a value of the
+    wrong type, must come back as issues (or as a valid pack), never as an exception."""
+
+    BAD = ([], {}, 7, None, "x")
+
+    def test_a_wrong_typed_member_is_reported_not_raised(self):
+        for path in FUZZED:
+            base = load(path)
+            for where in _leaves(base):
+                if not where:
+                    continue
+                for bad in self.BAD:
+                    source = copy.deepcopy(base)
+                    node = source
+                    for p in where[:-1]:
+                        node = node[p]
+                    node[where[-1]] = bad
+                    try:
+                        if not pack_schema.schema_issues(source):
+                            pack_compile.validate_source(source, pathlib.Path(path).parent)
+                    except Exception as e:  # noqa: BLE001
+                        self.fail(f"{path}: {'.'.join(map(str, where))} = {bad!r} raised {type(e).__name__}: {e}")
 
 
 class TestOnEveryKind(unittest.TestCase):
@@ -261,6 +328,33 @@ class TestOnEveryKind(unittest.TestCase):
         code, res = run_test(p)
         self.assertEqual((code, res["passed"]), (1, False))
         self.assertTrue(any("holds_integration" in i for i in res["issues"]), res)
+
+    def test_the_same_input_in_both_cases_is_refused(self):
+        dst = self.copy_sample("report")
+        f = dst / "fixtures/two-case.json"
+        doc = json.loads(f.read_text())
+        for c in doc["cases"]:
+            c["input"] = doc["cases"][0]["input"]
+        f.write_text(json.dumps(doc))
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertEqual(code, 1)
+        self.assertTrue(any("same input" in i for i in res["issues"]), res)
+
+    def test_an_evaluator_pack_is_not_said_to_be_judged(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        dst = pathlib.Path(d.name) / "pack"
+        (dst / "fixtures").mkdir(parents=True)
+        src = ROOT / "packs/inference-deals/pack-source.yaml"
+        (dst / "pack-source.yaml").write_text(src.read_text())
+        rows = terms.two_case.row_ids(load(src))
+        cases = [{"row": r, "case": c, "input": {"case": c, "row": r}} for r in rows for c in ("met", "not_met")]
+        (dst / "fixtures/two-case.json").write_text(json.dumps({"pack": load(src)["pack_id"], "cases": cases}))
+        code, res = run_test(dst / "pack-source.yaml")
+        self.assertEqual(code, 0, res)
+        reasons = {r["reason"] for r in res["rows"]}
+        self.assertEqual(len(reasons), 1)
+        self.assertIn("inference_deals evaluator", reasons.pop())
 
     def test_sample_fixtures_name_their_own_pack(self):
         for name, path in self.SAMPLES.items():

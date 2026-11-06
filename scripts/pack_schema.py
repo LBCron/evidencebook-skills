@@ -17,10 +17,10 @@ counterparty by accident.
 import json
 import pathlib
 
-import jsonschema
+import live_pack
 
 SCHEMA_PATH = pathlib.Path(__file__).resolve().parents[1] / "schemas" / "pack-source.schema.json"
-KINDS = ("admission", "deal", "conduct", "live", "after_the_fact")
+KINDS = live_pack.SCOPE_KINDS
 
 
 def schema():
@@ -28,8 +28,11 @@ def schema():
 
 
 def kind_of(source):
-    scope = source.get("scope") if isinstance(source, dict) else None
-    return scope.get("kind", "after_the_fact") if isinstance(scope, dict) else "after_the_fact"
+    """The source's scope.kind (live_pack.scope_kind), or None when it is not one of KINDS."""
+    if not isinstance(source, dict):
+        return None
+    kind = live_pack.scope_kind(source)
+    return kind if isinstance(kind, str) and kind in KINDS else None
 
 
 def _path(error):
@@ -38,6 +41,7 @@ def _path(error):
 
 def _leaves(error):
     """The innermost errors: the reason for a failed oneOf/anyOf, not the branch count."""
+    import jsonschema
     if not error.context:
         return [error]
     best = jsonschema.exceptions.best_match(error.context)
@@ -61,8 +65,11 @@ def schema_issues(source):
     """Every way `source` breaks the schema, each naming its field."""
     if not isinstance(source, dict):
         return ["pack source must be a mapping"]
-    if kind_of(source) not in KINDS:
-        return [f"scope.kind {kind_of(source)!r} must be one of {list(KINDS)}"]
+    import jsonschema  # not at import: terms verify, compare and run need no schema library
+    if "scope" in source and not isinstance(source["scope"], dict):
+        return ["scope must be a mapping with a kind"]
+    if kind_of(source) is None:
+        return [f"scope.kind {live_pack.scope_kind(source)!r} must be one of {list(KINDS)}"]
     validator = jsonschema.Draft202012Validator(schema())
     issues = []
     for error in sorted(validator.iter_errors(source), key=lambda e: [str(p) for p in e.absolute_path]):
