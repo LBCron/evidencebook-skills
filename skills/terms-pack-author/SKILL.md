@@ -12,7 +12,7 @@ past sales", "came through", "missed", "could not decide".
 
 Every command below is `terms <verb>`. It prints one JSON answer. Read it and tell the
 seller what it says in a sentence or two; do not paste it. Work in the seller's workspace
-(`~/studio`); the commands write only there.
+(`~/studio`); the commands write only there (`lint` and `test` only refresh the table beside terms `init` wrote).
 
 ## Starting from past sales, with no terms yet
 
@@ -20,21 +20,27 @@ If the seller has sales but has not said what a good sale looks like, do not gue
 `terms init --deals FILE --pack-id NAME` (or `--exports DIR`, or `--store STORE`; the same
 sales sources `run` reads). It reads the sales on this computer, writes a first set of
 terms and a count of which fields the sales carry, all under `~/studio/packs/NAME/`, and
-prints a table: each term with one status.
+prints a table: each term with one status. The first three terms are in the pack and are
+checked if it is published (`in_pack: true`). The others are ideas kept in `candidates.json`
+(`in_pack: false`): they are never checked, and the table says what each is waiting for.
 
-- **checkable now**: the sales carry what the term needs.
-- **needs examples**: the term takes the seller's judgment; ask them to say, for four
-  sales, whether it held (you keep their answers in `labels.json` beside the terms).
-- **needs a field**: the answer names the field the sales lack. Ask whether they can add it
-  to their sales records, or want to drop the term.
+- **checkable now**: the sales carry what the term needs, and the answer says how many sales it can decide.
+- **needs examples**: the term takes the seller's judgment, which these terms cannot run yet.
+  Tell the seller so. If they want to say how it should go anyway, record their answer for
+  each sale in `labels.json` beside the terms, as `{"matched_description": [{"deal_id": "...", "met": true}]}`
+  (four sales; the table counts them).
+- **needs a field**: the answer names the field the sales lack, or that no sale carries
+  it together with its partner. Ask whether they can add it to their sales records, or want to
+  drop the term (delete the row from the pack, or the idea from `candidates.json`).
 - **needs the other side**: only the buyer's own record can show it.
 - **not this pack's concern**: it is about the buyer's conduct, not the seller's terms.
 
 Tell the seller what each term is and its status in a sentence each. The sales' contents are not
 sent anywhere or shown to you: you see the field counts and the sales the seller labels.
-After any edit, label or run, `terms readiness ~/studio/packs/NAME/pack-source.yaml` (or the
-`readiness.json` beside it, which `lint`, `test` and `run` keep current) shows the table again.
-Then continue with the steps below, using the terms `init` wrote.
+After any edit or run, `terms readiness ~/studio/packs/NAME/pack-source.yaml` shows the table
+again; `lint`, `test` and `run` also rewrite `readiness.json` beside the terms, and a label
+shows once one of them (or `readiness`) has run. Then continue with the steps below, using the
+terms `init` wrote.
 
 ## The file
 

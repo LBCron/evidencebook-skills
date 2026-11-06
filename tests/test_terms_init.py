@@ -38,7 +38,12 @@ class Census(unittest.TestCase):
         self.assertEqual(c["records"], 2)
 
     def test_empty_dataset(self):
-        self.assertEqual(readiness.census([]), {"records": 0, "fields": []})
+        self.assertEqual(readiness.census([])["fields"], [])
+        self.assertEqual(readiness.census([])["records"], 0)
+
+    def test_a_key_that_holds_data_is_not_written_into_the_census(self):
+        c = readiness.census([{"buyers": {"alice@example.com": {"paid_at": "x"}}}])
+        self.assertEqual([f["field"] for f in c["fields"]], ["buyers.*.paid_at"])
 
 
 class Init(unittest.TestCase):
@@ -84,11 +89,127 @@ class Init(unittest.TestCase):
         self.assertIn("delivered_at", by["paid_before_delivered"]["detail"])
         self.assertEqual(by["price_as_offered"]["status"], "checkable now")
 
+    def test_fields_split_across_sales_are_not_checkable(self):
+        a, b = self.sale(deal_id="a"), self.sale(deal_id="b")
+        del a["delivered_at"]
+        del b["paid_at"]
+        _, res = self.init([a, b])
+        by = {t["term"]: t for t in res["terms"]}
+        self.assertEqual(by["paid_before_delivered"]["status"], "needs a field")
+        self.assertIn("paid_at and delivered_at together", by["paid_before_delivered"]["detail"])
+        self.assertEqual(by["price_as_offered"]["status"], "checkable now")
+
+    def test_a_value_the_check_cannot_read_is_not_checkable(self):
+        _, res = self.init([self.sale(offered_price="5.00", accepted_price="5.00")])
+        self.assertEqual({t["term"]: t for t in res["terms"]}["price_as_offered"]["status"], "needs a field")
+
+    def test_init_refuses_when_any_workspace_file_exists(self):
+        folder = self.ws / "packs" / "sale-terms"
+        folder.mkdir(parents=True)
+        (folder / "candidates.json").write_text("[]")
+        code, res = self.init([self.sale()])
+        self.assertEqual(code, 1)
+        self.assertIn("candidates.json", res["error"])
+        self.assertEqual((folder / "candidates.json").read_text(), "[]")
+
+    def test_a_broken_helper_file_is_an_error_not_an_empty_table(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        (folder / "candidates.json").write_text("[oops")
+        code, err = call("readiness", res["pack"])
+        self.assertEqual(code, 1)
+        self.assertIn("not JSON", err["error"])
+        before = (folder / "readiness.json").read_text()
+        call("lint", res["pack"])
+        self.assertEqual((folder / "readiness.json").read_text(), before)
+
+    def test_a_linked_readiness_file_is_never_written_through(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        target = pathlib.Path(self.tmp.name) / "elsewhere.json"
+        target.write_text("keep")
+        (folder / "readiness.json").unlink()
+        (folder / "readiness.json").symlink_to(target)
+        code, _ = call("lint", res["pack"])
+        self.assertEqual(code, 0)  # lint's own answer stands; the refresh failure goes to stderr
+        self.assertEqual(target.read_text(), "keep")
+
+    def test_an_unwritable_readiness_file_leaves_the_verb_answer_alone(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        (folder / "readiness.json").unlink()
+        (folder / "readiness.json").mkdir()
+        code, out = call("test", res["pack"])
+        self.assertEqual((code, out["passed"]), (0, True))
+
+    def test_a_linked_source_with_another_name_reads_the_linked_pack(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        alias = pathlib.Path(self.tmp.name) / "alias.yaml"
+        alias.symlink_to(res["pack"])
+        src = pathlib.Path(res["pack"])
+        src.write_text(src.read_text().replace("- id: price_as_offered", "- id: price_quoted"))
+        call("lint", alias)
+        self.assertIn("price_quoted", (folder / "readiness.json").read_text())
+
+    def test_rewording_a_row_keeps_it_unready(self):
+        _, res = self.init([self.sale(offered_price="5.00", accepted_price="5.00")])
+        src = pathlib.Path(res["pack"])
+        src.write_text(src.read_text().replace("The price was the price offered.", "We charged what we listed."))
+        call("lint", src)
+        table = json.loads((src.parent / "readiness.json").read_text())
+        row = {t["term"]: t for t in table["terms"]}["price_as_offered"]
+        self.assertEqual(row["status"], "needs a field")
+        self.assertEqual(row["missing_fields"], ["offered_price", "accepted_price"])
+
+    def test_a_row_that_fails_lint_gets_no_table(self):
+        _, res = self.init([self.sale()])
+        src = pathlib.Path(res["pack"])
+        before = (src.parent / "readiness.json").read_text()
+        src.write_text(src.read_text().replace("check: price_as_offered", "check: rating_above(4)"))
+        self.assertEqual(call("lint", src)[0], 1)
+        code, err = call("readiness", src)
+        self.assertEqual(code, 1)
+        self.assertIn("does not lint", err["error"])
+        self.assertEqual((src.parent / "readiness.json").read_text(), before)
+
+    def test_a_row_missing_its_members_is_an_error_not_a_crash(self):
+        _, res = self.init([self.sale()])
+        src = pathlib.Path(res["pack"])
+        src.write_text(src.read_text().replace("  proves:\n  - offered_price\n  - accepted_price\n", ""))
+        code, err = call("readiness", src)
+        self.assertEqual(code, 1)
+        self.assertIn("error", err)
+
+    def test_labels_count_distinct_sales_with_a_verdict(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        mark = lambda deal: {"deal_id": deal, "met": True}  # noqa: E731
+        labels = {"matched_description": [mark("a"), mark("a"), mark("b"), {"deal_id": "c"}, "junk"]}
+        (folder / "labels.json").write_text(json.dumps(labels))
+        _, table = call("readiness", res["pack"])
+        row = {t["term"]: t for t in table["terms"]}["matched_description"]
+        self.assertEqual(row["detail"], "2 of 4 sales labelled")
+        labels["matched_description"] += [mark("c"), mark("d")]
+        (folder / "labels.json").write_text(json.dumps(labels))
+        _, table = call("readiness", res["pack"])
+        self.assertIn("4 labelled", {t["term"]: t for t in table["terms"]}["matched_description"]["detail"])
+
+    def test_run_outside_its_workspace_writes_nothing_beside_the_pack(self):
+        _, res = self.init([self.sale()])
+        folder = pathlib.Path(res["pack"]).parent
+        before = (folder / "census.json").read_text()
+        other = pathlib.Path(self.tmp.name) / "other"
+        sales = [self.sale(buyer_confirmed_at="2026-10-12T10:00:00Z")]
+        self.deals.write_text(json.dumps(sales))
+        self.assertEqual(call("run", res["pack"], "--deals", self.deals, "--dry-run", "--workspace", other)[0], 0)
+        self.assertEqual((folder / "census.json").read_text(), before)
+
     def test_init_never_overwrites_a_pack(self):
         self.init([self.sale()])
         code, res = self.init([self.sale()])
         self.assertEqual(code, 1)
-        self.assertIn("exists", res["error"])
+        self.assertIn("already holds", res["error"])
 
     def test_rejects_a_bad_pack_id_and_an_escaping_one(self):
         self.assertEqual(self.init([self.sale()], "--pack-id", "../x")[0], 1)
@@ -100,7 +221,7 @@ class Init(unittest.TestCase):
         status = lambda t, term: {x["term"]: x["status"] for x in t["terms"]}.get(term)  # noqa: E731
         self.assertEqual(status(table(), "matched_description"), "needs examples")
 
-        # an edit: drop a row, then lint
+        # an edit: rename a row, then lint
         src = pathlib.Path(res["pack"])
         src.write_text(src.read_text().replace("- id: price_as_offered", "- id: price_as_quoted"))
         self.assertEqual(call("lint", src)[0], 0)

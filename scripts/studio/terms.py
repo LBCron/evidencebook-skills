@@ -16,8 +16,9 @@ The entry point is scripts/studio/terms (a bare `test` would be the shell's).
 
 `init` reads the sales, writes the field census and a proposed pack under
 <workspace>/packs/<pack_id>/, and `readiness` prints each term's status. `lint`, `test` and
-`run` rewrite readiness.json beside a pack `init` made, so it is current after each
-edit, label (labels.json) or run.
+`run` rewrite readiness.json (and `run` census.json) beside a pack `init` made, so it is
+current after each edit, label (labels.json) or run; that is the one write `lint` and `test`
+make, and `run` makes it only inside the workspace it is given.
 
 The workspace (default ~/studio, or $TERMS_WORKSPACE) is the only place a verb
 writes: `run` writes runs/<pack_id>/<n>/{result.json,report.html} and `publish`
@@ -303,52 +304,77 @@ def test_deal(source):
     return out({"passed": not failed, "kind": "deal", "rows": results}, 1 if failed else 0)
 
 
-PACK_FILES = ("pack-source.yaml", "dataset.json", "census.json", "candidates.json", "readiness.json")
+PACK_FILES = ("pack-source.yaml", "census.json", "candidates.json", "readiness.json")
 
 
-def refresh_readiness(src, sales=None):
+def refresh_readiness(src, sales=None, ws=None):
     """Rewrite readiness.json beside a pack `terms init` made (the folder holds census.json). `sales`,
-    when a verb has just read them, replace the census. A source that cannot be read is left to lint."""
-    folder = pathlib.Path(src).resolve().parent
-    if not (folder / "census.json").is_file() or (folder / "census.json").is_symlink():
+    when a verb has just read them, replace the census. A folder without census.json is not a workspace
+    pack and is not touched; with `ws`, neither is a folder outside it. A pack that does not lint has no
+    table (lint says why), and the last table stays."""
+    path = pathlib.Path(src).resolve()
+    folder = path.parent
+    if not (folder / "census.json").is_file():
         return None
-    try:
-        source = pack_compile.load_source((folder / pathlib.Path(src).name).read_text())
-        if sales is not None:
-            (folder / "census.json").write_text(json.dumps(readiness.census(sales), indent=2) + "\n")
-        table = readiness_table(folder, source)
-    except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError, AttributeError):
-        return None
+    if ws is not None:
+        inside(ws, folder)
+    for name in ("census.json", "readiness.json"):
+        if (folder / name).is_symlink():
+            raise TermsError(f"{folder / name} is a link; refusing to write through it")
+    source = rated_source(path)
+    if sales is not None:
+        (folder / "census.json").write_text(json.dumps(readiness.census(sales), indent=2) + "\n")
+    table = readiness_table(folder, source)
     (folder / "readiness.json").write_text(json.dumps(table, indent=2) + "\n")
     return table
 
 
+def rated_source(path):
+    """The pack source at `path`, which must lint: the table never rates a row the checker would refuse."""
+    try:
+        kind, issues = lint_source(path)
+        source = pack_compile.load_source(path.read_text())
+    except (OSError, yaml.YAMLError) as e:
+        raise TermsError(f"cannot read {path}: {e}")
+    if issues or kind != "deal":
+        raise TermsError(f"{path} does not lint as a deal pack, so it has no readiness: " + ("; ".join(issues) or f"kind {kind}"))
+    return source
+
+
+def refresh_or_say(src, sales=None, ws=None):
+    """refresh_readiness after a verb has printed its answer: a failure goes to stderr, never into the
+    verb's JSON or its exit code."""
+    try:
+        refresh_readiness(src, sales, ws)
+    except (TermsError, OSError, ValueError) as e:
+        print(f"terms: readiness.json not refreshed: {e}", file=sys.stderr)
+
+
 def readiness_table(folder, source):
-    census_doc = readiness.read_json(folder / "census.json", {"records": 0, "fields": []})
-    candidates = readiness.read_json(folder / "candidates.json", [])
-    labels = readiness.read_json(folder / "labels.json", {})
-    return readiness.readiness(source, census_doc, candidates if isinstance(candidates, list) else [],
-                               labels if isinstance(labels, dict) else {})
+    try:
+        census_doc = readiness.read_json(folder / "census.json", {"records": 0, "fields": []})
+        candidates = readiness.read_json(folder / "candidates.json", [])
+        labels = readiness.read_json(folder / "labels.json", {})
+    except ValueError as e:
+        raise TermsError(f"a file beside the pack is not JSON: {e}")
+    if not (isinstance(census_doc, dict) and isinstance(census_doc.get("fields"), list)):
+        raise TermsError(f"{folder / 'census.json'} is not a field census")
+    if not isinstance(candidates, list) or not all(isinstance(c, dict) and {"id", "statement", "tier", "reads", "side"} <= set(c) for c in candidates):
+        raise TermsError(f"{folder / 'candidates.json'} is not a list of candidate terms (id, statement, tier, reads, side)")
+    if not isinstance(labels, dict):
+        raise TermsError(f"{folder / 'labels.json'} is not a map of term id to labelled sales")
+    return readiness.readiness(source, census_doc, candidates, labels)
 
 
 def cmd_readiness(args):
-    path = pathlib.Path(args.src)
-    try:
-        source = pack_compile.load_source(path.read_text())
-    except (OSError, yaml.YAMLError) as e:
-        raise TermsError(f"cannot read {args.src}: {e}")
-    if not isinstance(source, dict) or not source.get("pack_id") or not isinstance(source.get("rows"), list):
-        raise TermsError(f"{args.src} is not a pack with rows to rate")
-    if not (path.resolve().parent / "census.json").is_file():
+    path = pathlib.Path(args.src).resolve()
+    if not (path.parent / "census.json").is_file():
         raise TermsError(f"no field census beside {args.src}: start the pack with `terms init`")
-    return out(refresh_readiness(path) or readiness_table(path.resolve().parent, source))
-
-
-def dataset_reference(args, sales):
-    for flag in ("deals", "exports", "store"):
-        value = getattr(args, flag)
-        if value:
-            return {"flag": f"--{flag}", "path": str(pathlib.Path(value).resolve()), "records": len(sales)}
+    source = rated_source(path)
+    try:
+        return out(refresh_readiness(path) or readiness_table(path.parent, source))
+    except OSError as e:
+        raise TermsError(str(e))
 
 
 def cmd_init(args):
@@ -357,12 +383,10 @@ def cmd_init(args):
     sales = load_sales(args)
     ws = workspace_of(args)
     folder = inside(ws, ws / "packs" / args.pack_id)
-    if (folder / "pack-source.yaml").exists():
-        raise TermsError(f"{folder / 'pack-source.yaml'} exists: edit it, then `terms readiness` (init never overwrites a pack)")
+    taken = [n for n in PACK_FILES if (folder / n).exists() or (folder / n).is_symlink()]
+    if taken:
+        raise TermsError(f"{folder} already holds {', '.join(taken)}: edit it, then `terms readiness` (init never overwrites)")
     folder.mkdir(parents=True, exist_ok=True)
-    for name in PACK_FILES:
-        if (folder / name).is_symlink():
-            raise TermsError(f"{folder / name} is a link; refusing to write through it")
     source = {"scope": {"kind": "deal"}, "pack_id": args.pack_id, "pack_version": "0.1.0",
               "title": args.title or f"{args.pack_id} terms",
               "statement": "A sale came through when it met every row of these terms.",
@@ -373,7 +397,6 @@ def cmd_init(args):
     census_doc = readiness.census(sales)
     (folder / "pack-source.yaml").write_text(yaml.safe_dump(source, sort_keys=False, width=100), encoding="utf-8")
     (folder / "census.json").write_text(json.dumps(census_doc, indent=2) + "\n")
-    (folder / "dataset.json").write_text(json.dumps(dataset_reference(args, sales), indent=2) + "\n")
     (folder / "candidates.json").write_text(json.dumps(readiness.propose_candidates(), indent=2) + "\n")
     table = readiness_table(folder, source)
     (folder / "readiness.json").write_text(json.dumps(table, indent=2) + "\n")
@@ -402,7 +425,7 @@ def cmd_run(args):
     (run / "result.json").write_bytes(raw)
     (run / "report.html").write_text(page_html(result, raw), encoding="utf-8")
     met, total = came_through(result)
-    refresh_readiness(args.src, deals)
+    refresh_or_say(args.src, deals, ws)
     return out({"run": str(run), "result": str(run / "result.json"), "page": str(run / "report.html"),
                 "rehearsal": bool(args.dry_run), "came_through": met, "sales": total,
                 "missed": undecided_or_missed(result, "not_met"),
@@ -566,7 +589,7 @@ def main(argv):
         code = {"lint": cmd_lint, "test": cmd_test, "run": cmd_run, "verify": cmd_verify, "init": cmd_init,
                 "readiness": cmd_readiness, "compare": cmd_compare, "publish": cmd_publish}[args.cmd](args)
         if args.cmd in ("lint", "test"):
-            refresh_readiness(args.src)
+            refresh_or_say(args.src)
         return code
     except (TermsError, result_v0.RollupError, ValueError) as e:
         return out({"error": str(e)}, 1)
