@@ -143,6 +143,25 @@ class BreakingTheSchema(unittest.TestCase):
                      if "profiles" in s else s.update(profiles=[{"profile_id": [], "counterparty_binding": {"direct": "x"}}]),
                      "profiles[")
 
+    def test_a_nested_choice_names_the_member_that_is_wrong(self):
+        """A constraint, fold, instrument or on_fail is one of two forms; the error
+        names the field of the form the member chose, never the other form's."""
+        payments = ROOT / "tests/fixtures/live-pack/payments-safety-1.0.0/pack-source.yaml"
+        SAMPLES["payments"] = payments
+        self.addCleanup(SAMPLES.pop, "payments")
+        want = (
+            (lambda s: s["constraints"][0].pop("check"), ["constraints[0].check is required"]),
+            (lambda s: s["constraints"][0].update(wicket_id=[]), ["constraints[0].wicket_id"]),
+            (lambda s: s["constraints"][0].update(config="x"), ["constraints[0].config"]),
+            (lambda s: s["folds"][0].update(file=[]), ["folds[0].file"]),
+        )
+        for edit, names in want:
+            issues = self.refused("payments", edit, *names)
+            self.assertFalse(any("is not a field" in i for i in issues), issues)
+        issues = self.refused("admission", lambda s: s["rows"][0].update(on_fail={"cap": []}), "rows[0].on_fail.cap")
+        self.assertEqual(len(issues), 1, issues)
+        self.refused("admission", lambda s: s["rows"][0].update(on_fail="MAYBE"), "rows[0].on_fail 'MAYBE'")
+
     def test_report(self):
         self.refused("after_the_fact", lambda s: s["checks"][0]["criteria"][0].update(tier="guessed"),
                      "checks[0].criteria[0].tier")
@@ -264,7 +283,7 @@ class LintNeverCrashes(unittest.TestCase):
 
 class TestOnEveryKind(unittest.TestCase):
     """`terms test` takes a pack of any kind and its met / not_met cases for every row.
-    Only a deal pack has a local evaluator; the other kinds are decided by
+    Only a deal pack has an evaluator `terms test` can run; the other kinds are decided by
     capsule-engine or a pinned judge, so their cases are checked against the pack
     and reported not evaluated, never passed."""
 

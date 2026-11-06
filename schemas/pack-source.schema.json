@@ -431,29 +431,30 @@
                 "pattern": "\\S"
               },
               "on_fail": {
-                "oneOf": [
-                  {
-                    "enum": [
-                      "NO",
-                      "LIMIT",
-                      "record"
-                    ]
+                "if": {
+                  "type": "object"
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "cap": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
                   },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "cap": {
-                        "type": "string",
-                        "minLength": 1,
-                        "pattern": "\\S"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                      "cap"
-                    ]
-                  }
-                ]
+                  "additionalProperties": false,
+                  "required": [
+                    "cap"
+                  ]
+                },
+                "else": {
+                  "enum": [
+                    "NO",
+                    "LIMIT",
+                    "record"
+                  ]
+                }
               },
               "ask": {
                 "type": "object"
@@ -653,44 +654,52 @@
                 ]
               },
               "evidence_instrument": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "const": "structured_field"
-                      },
-                      "field": {
-                        "type": "string",
-                        "minLength": 1,
-                        "pattern": "\\S"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                      "kind",
-                      "field"
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "const": "tool_call_name"
-                      },
-                      "name": {
-                        "type": "string",
-                        "minLength": 1,
-                        "pattern": "\\S"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                      "kind",
-                      "name"
-                    ]
+                "if": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    }
                   }
-                ]
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                },
+                "else": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "structured_field"
+                    },
+                    "field": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "field"
+                  ]
+                }
               },
               "mode": {
                 "enum": [
@@ -882,44 +891,52 @@
                 ]
               },
               "evidence_instrument": {
-                "oneOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "const": "structured_field"
-                      },
-                      "field": {
-                        "type": "string",
-                        "minLength": 1,
-                        "pattern": "\\S"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                      "kind",
-                      "field"
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "kind": {
-                        "const": "tool_call_name"
-                      },
-                      "name": {
-                        "type": "string",
-                        "minLength": 1,
-                        "pattern": "\\S"
-                      }
-                    },
-                    "additionalProperties": false,
-                    "required": [
-                      "kind",
-                      "name"
-                    ]
+                "if": {
+                  "required": [
+                    "kind"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    }
                   }
-                ]
+                },
+                "then": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "tool_call_name"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "name"
+                  ]
+                },
+                "else": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "structured_field"
+                    },
+                    "field": {
+                      "type": "string",
+                      "minLength": 1,
+                      "pattern": "\\S"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "kind",
+                    "field"
+                  ]
+                }
               },
               "tier": {
                 "enum": [
@@ -1071,118 +1088,124 @@
         "constraints": {
           "type": "array",
           "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "wicket_ref": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
-                  },
-                  "check": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
-                  },
-                  "digest": {
-                    "type": "string",
-                    "pattern": "^[0-9a-f]{64}$"
-                  },
-                  "scope": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
-                    },
-                    "minItems": 1
-                  }
+            "if": {
+              "required": [
+                "wicket_ref"
+              ]
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "wicket_ref": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
                 },
-                "additionalProperties": false,
-                "required": [
-                  "wicket_ref",
-                  "check",
-                  "digest"
-                ]
+                "check": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "scope": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "minItems": 1
+                }
               },
-              {
-                "type": "object",
-                "properties": {
-                  "wicket_id": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*/\\d+\\.\\d+\\.\\d+$"
-                  },
-                  "check": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
-                  },
-                  "config": {
-                    "type": "object"
-                  },
-                  "semantics": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
-                  },
-                  "scope": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "minLength": 1,
-                      "pattern": "\\S"
-                    },
-                    "minItems": 1
-                  }
+              "additionalProperties": false,
+              "required": [
+                "wicket_ref",
+                "check",
+                "digest"
+              ]
+            },
+            "else": {
+              "type": "object",
+              "properties": {
+                "wicket_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*/\\d+\\.\\d+\\.\\d+$"
                 },
-                "additionalProperties": false,
-                "required": [
-                  "wicket_id",
-                  "check"
-                ]
-              }
-            ]
+                "check": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "config": {
+                  "type": "object"
+                },
+                "semantics": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                },
+                "scope": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "\\S"
+                  },
+                  "minItems": 1
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "wicket_id",
+                "check"
+              ]
+            }
           }
         },
         "folds": {
           "type": "array",
           "items": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
-                  }
-                },
-                "additionalProperties": false,
-                "required": [
-                  "file"
-                ]
+            "if": {
+              "required": [
+                "file"
+              ]
+            },
+            "then": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
               },
-              {
-                "type": "object",
-                "properties": {
-                  "fold_ref": {
-                    "type": "string",
-                    "minLength": 1,
-                    "pattern": "\\S"
-                  },
-                  "digest": {
-                    "type": "string",
-                    "pattern": "^[0-9a-f]{64}$"
-                  }
+              "additionalProperties": false,
+              "required": [
+                "file"
+              ]
+            },
+            "else": {
+              "type": "object",
+              "properties": {
+                "fold_ref": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S"
                 },
-                "additionalProperties": false,
-                "required": [
-                  "fold_ref",
-                  "digest"
-                ]
-              }
-            ]
+                "digest": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "fold_ref",
+                "digest"
+              ]
+            }
           }
         },
         "profiles": {

@@ -69,10 +69,11 @@ way.
   that breaks it, then runs the kind's cross-field rules. `terms test` runs the met
   and not-met case of every row: a deal pack's by its evaluator, any other kind's
   from `fixtures/two-case.json` beside the pack, checked against the pack and
-  reported `evaluated: false` because capsule-engine or a pinned judge decides them,
-  not this script. A `conduct` pack is private: it is judged only for its owner and
-  nobody else receives or adjudicates it; keeping it out of a counterparty's scoped bundle is
-  enforced where the bundle is built (capsule-emit#422), not by this repository.
+  reported `evaluated: false` because capsule-engine, a pinned judge or a pack's
+  own evaluator over a node's sealed records decides them, not this script.
+  A `conduct` pack is private: it is judged only for its owner and nobody else receives
+  or adjudicates it. Keeping it out of a counterparty's scoped bundle is to be enforced
+  where the bundle is built (tracked in capsule-emit#422), not by this repository.
   `admission-baseline` is an admission pack (`scope.kind: admission`,
   [`docs/admission-pack-profile-v0.md`](docs/admission-pack-profile-v0.md)):
   the policy a relying party runs before an act, over what it received about a
