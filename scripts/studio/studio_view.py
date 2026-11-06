@@ -45,13 +45,21 @@ def _title(folder):
     return title if isinstance(title, str) and title else None
 
 
+def _within(ws, path):
+    """`path` resolved, which must sit inside the workspace: a link out is refused, so the page is built from the workspace only."""
+    resolved = path.resolve()
+    if resolved != ws and ws not in resolved.parents:
+        raise StudioError(f"{path} leads outside the workspace {ws}; refusing to read it")
+    return resolved
+
+
 def _entry(ws, folder):
     """The switch entry of the pack in `folder`, or None when it has no run."""
     st = wsm.state(folder)
     last = st.get("last_run")
     if not isinstance(last, dict) or not last.get("run"):
         return None
-    run = ws / last["run"]
+    run = _within(ws, ws / last["run"])
     for name in ("result.json", "report.html"):
         if not (run / name).is_file():
             raise StudioError(f"{run / name} is missing: `terms run` the pack {folder.name} again")
@@ -70,8 +78,12 @@ def _entry(ws, folder):
     return entry
 
 
-def build(ws, folder):
-    """The studio-view/v0 input whose active pack is the one in `folder`."""
+def build(ws, folder, current_digest=None):
+    """The studio-view/v0 input whose active pack is the one in `folder`. `current_digest` is the pack
+    digest of the source as it is now: the readiness table and history describe it, so the latest run
+    must be a run of it, or the loop would show an edited pack as already tried."""
+    ws = ws.resolve()
+    folder = _within(ws, folder)
     packs_dir = ws / "packs"
     packs = []
     for sub in sorted(packs_dir.iterdir()) if packs_dir.is_dir() else []:
@@ -81,6 +93,12 @@ def build(ws, folder):
                 packs.append(entry)
     if not any(p["pack_id"] == folder.name for p in packs):
         raise StudioError(f"the pack {folder.name} has no run yet: `terms run` it, then `terms studio` again")
+    active = next(p for p in packs if p["pack_id"] == folder.name)
+    if current_digest is not None and active["pack_digest"] != current_digest:
+        raise StudioError(f"{folder.name} has changed since its last run: `terms run` it, then `terms studio` again")
+    for name in ("readiness.json", "history.jsonl"):
+        if (folder / name).exists():
+            _within(ws, folder / name)
     table = wsm.read_json(folder / "readiness.json", None)
     if not isinstance(table, dict):
         raise StudioError(f"{folder / 'readiness.json'} is missing: `terms readiness` writes it")
@@ -110,9 +128,14 @@ _SNAPSHOT = re.compile(r'<code data-snapshot-digest>([0-9a-f]{64})</code></p>'
 
 
 def snapshot(text):
-    """(declared digest, actual digest, input) of a Studio page, or None when `text` is not one."""
+    """(declared digest, actual digest, input or None) of a Studio page, or None when `text` is not one.
+    The input is None when the embedded JSON is not an object."""
     m = _SNAPSHOT.search(text)
     if not m:
         return None
     declared, body = m.groups()
-    return declared, hashlib.sha256(body.encode()).hexdigest(), json.loads(body)
+    try:
+        view = json.loads(body)
+    except ValueError:
+        view = None
+    return declared, hashlib.sha256(body.encode()).hexdigest(), view if isinstance(view, dict) else None

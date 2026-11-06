@@ -87,6 +87,29 @@ class Input(Base):
         with self.assertRaisesRegex(studio_view.StudioError, "report.html is missing"):
             studio_view.build(self.ws, self.src.parent)
 
+    def test_a_pack_edited_since_its_last_run_is_refused(self):
+        self.run_pack(self.src, "--dry-run")
+        self.src.write_text(self.src.read_text().replace("within 2 days", "within 3 days").replace("delivered_within_days(2)", "delivered_within_days(3)"))
+        code, res = call("studio", self.src, "--workspace", self.ws, "--viewer", "/nowhere")
+        self.assertEqual(code, 1)
+        self.assertIn("changed since its last run", res["error"])
+
+    def test_a_run_linked_from_outside_the_workspace_is_refused(self):
+        run = self.run_pack(self.src, "--dry-run")
+        outside = pathlib.Path(self.tmp.name) / "elsewhere"
+        pathlib.Path(run["run"]).rename(outside)
+        pathlib.Path(run["run"]).symlink_to(outside)
+        with self.assertRaisesRegex(studio_view.StudioError, "outside the workspace"):
+            studio_view.build(self.ws, self.src.parent)
+
+    def test_verify_answers_a_corrupt_snapshot_in_words(self):
+        for body in ("[]", "null", "{not json"):
+            page = pathlib.Path(self.tmp.name) / "p.html"
+            page.write_text('<code data-snapshot-digest>%s</code></p><script type="application/json" data-studio-input>%s</script>'
+                            % ("0" * 64, body))
+            code, res = call("verify", page)
+            self.assertEqual((code, res["verified"], res["scope"]), (1, False, "snapshot"), body)
+
     def test_no_viewer_named_is_said_in_words(self):
         self.run_pack(self.src)
         with self.assertRaisesRegex(studio_view.StudioError, "--viewer DIR or \\$CAPSULE_VIEWER"):

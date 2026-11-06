@@ -563,15 +563,14 @@ def cmd_verify(args):
 
 def verify_studio(page, text):
     """A Studio page checks against itself and nothing more: its embedded input against the digest it prints."""
-    try:
-        declared, actual, view = studio_view.snapshot(text)
-    except ValueError as e:
-        return out({"verified": False, "scope": "snapshot", "issues": [f"the embedded studio input is not JSON: {e}"]}, 1)
+    declared, actual, view = studio_view.snapshot(text)
     issues = [] if declared == actual else ["the embedded studio input does not match the digest the page states"]
+    if view is None:
+        issues.append("the embedded studio input is not a JSON object")
     return out({"verified": not issues, "scope": "snapshot", "issues": issues,
                 "note": "checks the snapshot only: the page's own embedded input against its printed digest. "
                         "The workspace files it was made from are not sealed evidence, and no report page was checked.",
-                "active": view.get("schema") and view.get("active"), "snapshot_sha256": declared}, 1 if issues else 0)
+                "active": (view or {}).get("active"), "snapshot_sha256": declared}, 1 if issues else 0)
 
 
 def read_result(arg, ws=None):
@@ -683,7 +682,11 @@ def pack_folder(args):
 
 def cmd_studio(args):
     ws, path, folder = pack_folder(args)
-    view = studio_view.build(ws, folder)
+    try:
+        current = deal_pack.compiled(load_pack(args.src))["definition_digest"]
+    except TermsError as e:
+        raise TermsError(f"{args.src} does not lint, so the page cannot say what was tried: {e}")
+    view = studio_view.build(ws, folder, current)
     viewer = args.viewer or os.environ.get("CAPSULE_VIEWER")
     page = studio_view.render(view, viewer)
     # written whole or not at all (Ctrl-C mid-write leaves the earlier page), links refused
