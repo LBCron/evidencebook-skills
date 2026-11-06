@@ -14,6 +14,28 @@ Every command below is `terms <verb>`. It prints one JSON answer. Read it and te
 seller what it says in a sentence or two; do not paste it. Work in the seller's workspace
 (`~/studio`); the commands write only there.
 
+## Starting from past sales, with no terms yet
+
+If the seller has sales but has not said what a good sale looks like, do not guess:
+`terms init --deals FILE --pack-id NAME` (or `--exports DIR`, or `--store STORE`; the same
+sales sources `run` reads). It reads the sales on this computer, writes a first set of
+terms and a count of which fields the sales carry, all under `~/studio/packs/NAME/`, and
+prints a table: each term with one status.
+
+- **checkable now**: the sales carry what the term needs.
+- **needs examples**: the term takes the seller's judgment; ask them to say, for four
+  sales, whether it held (you keep their answers in `labels.json` beside the terms).
+- **needs a field**: the answer names the field the sales lack. Ask whether they can add it
+  to their sales records, or want to drop the term.
+- **needs the other side**: only the buyer's own record can show it.
+- **not this pack's concern**: it is about the buyer's conduct, not the seller's terms.
+
+Tell the seller what each term is and its status in a sentence each. The sales' contents are not
+sent anywhere or shown to you: you see the field counts and the sales the seller labels.
+After any edit, label or run, `terms readiness ~/studio/packs/NAME/pack-source.yaml` (or the
+`readiness.json` beside it, which `lint`, `test` and `run` keep current) shows the table again.
+Then continue with the steps below, using the terms `init` wrote.
+
 ## The file
 
 Write `~/studio/packs/sticker-sale/pack-source.yaml`. Start from this, keep the three
