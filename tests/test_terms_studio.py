@@ -676,44 +676,67 @@ class CoverageReport(unittest.TestCase):
     def sources(self, result):
         return [s for r in result["coverage_report"]["requirements"] for s in r["sources"]]
 
-    def sales(self, backfilled):
-        base = json.loads(TRADES.read_text())["trades"][:3]
-        return [dict(s, backfilled=True) if b else s for s, b in zip(base, backfilled)]
+    def sales(self, modes):
+        """The first sales, each stated "backfilled", "contemporaneous" or None (states nothing)."""
+        base = json.loads(TRADES.read_text())["trades"][:len(modes)]
+        return [dict(s, **{m: True}) if m else s for s, m in zip(base, modes)]
 
     def test_a_backfill_only_result_counts_every_record_as_backfilled(self):
-        result = self.result_over(self.sales([True, True, True]))
+        result = self.result_over(self.sales(["backfilled"] * 3))
         sources = self.sources(result)
         self.assertEqual(len(sources), 3)  # one per pack row
         for s in sources:
             self.assertEqual((s["record_count"], s["contemporaneous_count"], s["backfilled_count"]), (3, 0, 3))
             self.assertEqual(len(s["evidence"]), 3)
+        self.assertEqual(result["x-pack"]["provenance_unknown"], [])
 
     def test_a_result_with_a_contemporaneous_sale_is_not_backfill_only(self):
-        for flags in ([True, True, False], [False, False, False]):
-            for s in self.sources(self.result_over(self.sales(flags))):
+        for modes in (["backfilled", "backfilled", "contemporaneous"], ["contemporaneous"] * 3):
+            for s in self.sources(self.result_over(self.sales(modes))):
                 self.assertEqual((s["contemporaneous_count"], s["backfilled_count"]),
-                                 (flags.count(False), flags.count(True)))
+                                 (modes.count("contemporaneous"), modes.count("backfilled")))
                 self.assertNotEqual(s["backfilled_count"], s["record_count"])
 
+    def test_a_sale_with_no_stated_provenance_leaves_the_report_out(self):
+        # issue 152: a sale that says nothing was recorded at some time nobody asserted; the spec's
+        # contemporaneous + backfilled == record_count leaves it no place in the counts.
+        for modes in ([None] * 3, ["backfilled", None, "contemporaneous"], ["backfilled", "backfilled", None]):
+            sales = self.sales(modes)
+            result = self.result_over(sales)
+            self.assertNotIn("coverage_report", result, modes)
+            self.assertEqual(result["x-pack"]["provenance_unknown"],
+                             sorted(s["deal_id"] for s, m in zip(sales, modes) if not m))
+            self.assertFalse(terms.backfill_only(result), modes)  # unknown is never "all backfilled"
+        both = self.result_over([dict(self.sales(["backfilled"])[0], contemporaneous=True)])
+        self.assertEqual(len(both["x-pack"]["provenance_unknown"]), 1)  # two modes at once state none
+        self.assertNotIn("coverage_report", both)
+
     def test_the_report_names_each_rows_claims_and_passes_the_engines_cross_checks(self):
-        result = self.result_over(self.sales([True, True, True]))
-        by_id = {c["id"]: c for c in result["claims"]}
-        for row in result["coverage_report"]["requirements"]:
-            self.assertEqual(len(row["claim_ids"]), 3)
-            for cid in row["claim_ids"]:
-                self.assertEqual(by_id[cid]["requirement_ref"], row["requirement_ref"])
         try:
             from capsule_engine.report.coverage import verify_coverage_report
         except ImportError:
-            self.skipTest("capsule-engine is not installed")
-        verify_coverage_report(result["coverage_report"], by_id)
+            verify_coverage_report = None
+        for modes in (["backfilled"] * 3, ["backfilled", "contemporaneous", "contemporaneous"]):
+            result = self.result_over(self.sales(modes))
+            by_id = {c["id"]: c for c in result["claims"]}
+            for row in result["coverage_report"]["requirements"]:
+                self.assertEqual(len(row["claim_ids"]), 3)
+                for cid in row["claim_ids"]:
+                    self.assertEqual(by_id[cid]["requirement_ref"], row["requirement_ref"])
+                for s in row["sources"]:  # the spec's count rule, checked here even without the engine
+                    self.assertEqual(s["contemporaneous_count"] + s["backfilled_count"], s["record_count"])
+                    self.assertEqual(s["record_count"], len(s["evidence"]))
+                self.assertEqual(row["independence"]["unattributed_records"], 3)
+            if verify_coverage_report:
+                verify_coverage_report(result["coverage_report"], by_id)
 
     def test_a_sale_without_the_member_keeps_its_digest(self):
-        # plan_ref and dataset_ref hang on the sale digests: only a backfilled sale may differ.
+        # plan_ref and dataset_ref hang on the sale digests: only a sale that states a mode may differ.
         sale = json.loads(TRADES.read_text())["trades"][0]
         self.assertNotIn("backfilled", sale)
         self.assertNotEqual(dataset_plan.digest_of(sale), dataset_plan.digest_of(dict(sale, backfilled=True)))
-        result = self.result_over(self.sales([False, False, False]))
+        self.assertNotEqual(dataset_plan.digest_of(sale), dataset_plan.digest_of(dict(sale, contemporaneous=True)))
+        result = self.result_over(self.sales([None] * 3))
         self.assertEqual(result["x-pack"]["sales"][sale["deal_id"]], dataset_plan.digest_of(sale))
 
     def test_exported_records_are_backfilled_only_when_every_record_says_so(self):
@@ -721,15 +744,22 @@ class CoverageReport(unittest.TestCase):
         records = seller_export(1, 150, 150)
         stamp = lambda r, mode: dict(r, provenance_mode={"mode": mode})  # noqa: E731
         self.assertNotIn("backfilled", deal_store.sale_from_records("d", records))
+        self.assertNotIn("contemporaneous", deal_store.sale_from_records("d", records))  # states no mode: unknown
         every = [stamp(r, "backfilled") for r in records]
         self.assertIs(deal_store.sale_from_records("d", every)["backfilled"], True)
         mixed = every[:-1] + [stamp(records[-1], "contemporaneous")]
         self.assertNotIn("backfilled", deal_store.sale_from_records("d", mixed))
+        self.assertNotIn("contemporaneous", deal_store.sale_from_records("d", mixed))
+        live = [stamp(r, "contemporaneous") for r in records]
+        self.assertIs(deal_store.sale_from_records("d", live)["contemporaneous"], True)
+        self.assertNotIn("backfilled", deal_store.sale_from_records("d", live))
+        self.assertNotIn("contemporaneous", deal_store.sale_from_records("d", live + [None]))
         self.assertNotIn("backfilled", deal_store.sale_from_records("d", every + [None]))  # an unreadable record states no mode
         self.assertNotIn("backfilled", deal_store.sale_from_records("d", every[:-1] + [records[-1]]))
 
     def test_the_report_page_says_imported_only_over_backfill_alone(self):
-        for flags, says in (([True, True, True], True), ([True, True, False], False), ([False] * 3, False)):
+        b, c = "backfilled", "contemporaneous"
+        for flags, says in (([b, b, b], True), ([b, b, c], False), ([c] * 3, False), ([b, b, None], False), ([None] * 3, False)):
             result = self.result_over(self.sales(flags))
             page = terms.page_html(result, terms.result_bytes(result))
             self.assertEqual('id="imported"' in page, says, flags)
@@ -739,7 +769,7 @@ class CoverageReport(unittest.TestCase):
 
     def test_a_backfill_page_still_verifies(self):
         deals = self.t / "sales.json"
-        deals.write_text(json.dumps({"trades": self.sales([True, True, True])}))
+        deals.write_text(json.dumps({"trades": self.sales(["backfilled"] * 3)}))
         code, res = call("run", SOURCE, "--deals", deals, "--workspace", self.t / "ws", "--generated-at", GENERATED)
         self.assertEqual(code, 0, res)
         self.assertEqual(call("verify", res["page"])[0], 0)

@@ -38,8 +38,10 @@ reads are only read. With no --workspace or $TERMS_WORKSPACE, a SRC inside a pac
 A Result is Evidence Result v0 (scripts/result_v0.py), one claim per sale per
 row, `plan_ref` and `dataset_ref` (section 7.3: the digests of plan.json and dataset.json,
 written beside result.json; scripts/studio/dataset_plan.py), a `coverage_report` (per row,
-the sales as records: backfilled_count counts the sales a deal export or --deals marks backfilled,
-so a Result over backfill alone reads as imported on the report page), plus two document members: `x-pack` (the pack's id, version, definition
+the sales as records: backfilled_count the sales a deal export or --deals marks `backfilled: true`,
+contemporaneous_count the ones marked `contemporaneous: true`, so a Result over backfill alone reads as
+imported on the report page; with any sale that states neither, the Result carries no coverage_report and
+names those sales in x-pack.provenance_unknown), plus two document members: `x-pack` (the pack's id, version, definition
 digest and each row's digest) and, on a rehearsal, `x-rehearsal: true`. The page
 carries result.json's exact bytes in a <script type="application/json">, and
 states their SHA-256 beside them; `terms verify` checks the page against itself
@@ -183,14 +185,22 @@ def result_bytes(result):
     return json.dumps(result, sort_keys=True, ensure_ascii=True, separators=(",", ":")).replace("</", "<\\/").encode()
 
 
+def provenance(deal):
+    """"backfilled" or "contemporaneous" when the sale states one (and only one), else None: unknown."""
+    stated = [m for m in ("backfilled", "contemporaneous") if deal.get(m) is True]
+    return stated[0] if len(stated) == 1 else None
+
+
 def coverage_report(contract_ref, rows, deals, evidence, claims):
     """The Result's `coverage_report` (coverage-report/v0, the members Evidence Result v0 already
-    has): per pack row, one source `sale-records` whose records are the sales. A sale is backfilled
-    when it says `backfilled: true` (deal_store.sale_from_records); every other sale counts as
-    contemporaneous, so a Result reads as backfill-only only when no sale is anything else.
-    Terms data names no producer, so each sale is an unattributed record and independence is
-    unmet: the row is UNKNOWN, never SATISFIED on a producer count nobody has."""
-    backfilled = sum(1 for d in deals if d.get("backfilled") is True)
+    has), for sales that all state their provenance (`backfilled: true` or `contemporaneous: true`,
+    deal_store.sale_from_records): per pack row, one source `sale-records` whose records are the
+    sales. The spec needs contemporaneous + backfilled == record_count, so a sale with unknown
+    provenance has no place in the counts, and counting it either way is a claim nobody made.
+    build_result therefore leaves the report out then, and a reader that finds none cannot read the
+    Result as backfill-only. Terms data names no producer, so each sale is an unattributed record
+    and independence is unmet: the row is UNKNOWN, never SATISFIED on a producer count nobody has."""
+    backfilled = sum(1 for d in deals if provenance(d) == "backfilled")
     claim_ids = {}
     for c in claims:
         claim_ids.setdefault(c["requirement_ref"], []).append(c["id"])
@@ -227,12 +237,15 @@ def build_result(source, deals, generated_at, rehearsal):
             case_scoped_ids=True)
         docs.append(doc)
     merged = result_v0.merge_result_v0_documents(docs, f"{source['title']} -- {len(deals)} sales", generated_at)
-    merged["coverage_report"] = coverage_report(compiled["contract_ref"], rows, deals, digests, merged["claims"])
+    unknown = sorted(d["deal_id"] for d in deals if not provenance(d))
+    if not unknown:
+        merged["coverage_report"] = coverage_report(compiled["contract_ref"], rows, deals, digests, merged["claims"])
     merged["x-pack"] = {
         "pack_id": source["pack_id"], "pack_version": source["pack_version"],
         "definition_digest": compiled["definition_digest"],
         "rows": [{"id": r["id"], "statement": r["statement"], "row_digest": r["row_digest"]} for r in rows],
         "sales": dataset_plan.sale_digests(deals),
+        "provenance_unknown": unknown,
     }
     plan, dataset = dataset_plan.build(merged["x-pack"]["sales"])
     merged["plan_ref"] = dataset_plan.digest_ref(dataset_plan.digest_of(plan))
@@ -270,7 +283,8 @@ def by_deal(result):
 def backfill_only(result):
     """Whether the Result rests on backfill alone, read as capsule-viewer#303 reads it: at least one
     record, and every source in `coverage_report.requirements[].sources[]` has contemporaneous_count 0
-    and backfilled_count equal to record_count. Anything else, a missing report included, is not."""
+    and backfilled_count equal to record_count. Anything else, a missing report included (a Result with
+    a sale of unknown provenance carries none), is not."""
     records = 0
     for requirement in (result.get("coverage_report") or {}).get("requirements", []):
         for s in requirement.get("sources", []):
