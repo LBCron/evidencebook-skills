@@ -359,6 +359,18 @@ class DealStore(unittest.TestCase):
             misses = {c["id"] for c in result["claims"] if c["verdict"] == "not_met"}
             self.assertEqual(misses, {"deal-07::price_as_offered"})
 
+    def test_a_lightning_sale_reads_paid_at_from_the_lightning_wallet_evidence(self):
+        import deal_store
+        records = seller_export(3, 150, 150, paid="2026-11-04T10:00:01Z")
+        for r in records:
+            if r["body"].get("source") == "x402_settle_response":
+                r["body"]["source"] = "lightning_wallet"
+        sale = deal_store.sale_from_records("deal-03", records)
+        self.assertEqual(sale["paid_at"], "2026-11-04T10:00:01Z")
+        self.assertIn("delivered_at", sale)
+        self.assertNotIn("paid_at", deal_store.sale_from_records("d", [
+            {"body": {"source": "other_wallet"}, "x-deal-v0": {"record_type": "evidence", "at": "2026-11-04T10:00:01Z"}}]))
+
     def test_a_price_change_after_the_commit_is_the_miss(self):
         import deal_store
         records = seller_export(7, 150, 150)
