@@ -15,7 +15,9 @@ with `at` (or `x-deal-v0.at`), `type` and `body`. Per deal:
                     unchecked_action's attempted commit amount_minor (the price
                     the seller tried to charge, so a changed price is a miss
                     and not "not evaluable")
-    paid_at         `at` of the evidence record with source x402_settle_response
+    paid_at         `at` of the evidence record with source x402_settle_response (x402)
+                    or lightning_wallet (Lightning, `--pay lexe`): the two sources
+                    `deal note --kind payment_received` seals
     delivered_at    `at` of the evidence record with source seller_handoff
     backfilled      true when every record carries provenance_mode.mode "backfilled"
                     (AAC 5.3(bis)): the sale was imported, not recorded as it happened
@@ -30,6 +32,12 @@ import os
 import pathlib
 import subprocess
 import tempfile
+
+
+# `deal note --kind payment_received` seals the payee-observed leg as evidence with
+# source x402_settle_response (x402) or lightning_wallet (Lightning)
+# (evidencebook-deal internal/deal/deal_settlement.go).
+PAYMENT_SOURCES = ("x402_settle_response", "lightning_wallet")
 
 
 class StoreError(Exception):
@@ -89,7 +97,7 @@ def sale_from_records(deal_id, records):
             if isinstance(att, dict) and att.get("action") == "commit" and _amount(att) is not None:
                 attempted = _amount(att)
         elif kind == "evidence":
-            if body.get("source") == "x402_settle_response" and _at(rec):
+            if body.get("source") in PAYMENT_SOURCES and _at(rec):
                 sale["paid_at"] = _at(rec)
             elif body.get("source") == "seller_handoff" and _at(rec):
                 sale["delivered_at"] = _at(rec)
