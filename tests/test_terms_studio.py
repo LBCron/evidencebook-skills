@@ -456,7 +456,7 @@ class RulesChecker(unittest.TestCase):
         ok = self.run_checker(check_input("deal-a", 150, 150))
         self.assertEqual((ok["verdict"], ok["definition_digest"]), ("allow", self.pin["definition_digest"]))
         # capsulectl's sealer reads name@version as an email address and refuses the answer
-        self.assertEqual(ok["ruleset_id"], "sticker-sale/0.1.0")
+        self.assertEqual(ok["ruleset_id"], "sticker-sale/0.1.1")
         self.assertNotIn("@", ok["ruleset_id"])
         by = {f["id"]: f["verdict"] for f in ok["findings"]}
         self.assertEqual(by, {"paid_before_delivered": "not_applicable", "delivered_within_days": "not_applicable",
@@ -629,6 +629,16 @@ class OtherGoods(unittest.TestCase):
     BEANS = ROOT / "packs" / "coffee-beans-sale" / "pack-source.yaml"
     BEAN_TRADES = ROOT / "tests" / "fixtures" / "coffee-beans-sale" / "trades.json"
 
+    def test_every_row_that_reads_delivered_at_says_it_is_the_sellers_report(self):
+        # delivered_at is the seller's report, not buyer-checked (evidencebook-skills#156)
+        import readiness
+        rows = [r for src in (SOURCE, self.BEANS) for r in terms.load_pack(src)["rows"]]
+        rows += list(readiness.PROPOSED_ROWS)
+        reading = [r for r in rows if "delivered_at" in r["proves"]]
+        self.assertEqual(len(reading), 6)
+        for r in reading:
+            self.assertIn("seller", r["statement"], r["id"])
+
     def test_both_example_packs_name_the_one_transaction_evaluator(self):
         import deal_pack
         for src in (SOURCE, self.BEANS):
@@ -637,11 +647,12 @@ class OtherGoods(unittest.TestCase):
         self.assertNotIn("sticker", transaction.__doc__.split("\n\n")[0].lower())  # its summary names no good
         self.assertNotIn("sticker", pathlib.Path(transaction.__file__).name)
 
-    def test_the_renamed_evaluator_leaves_the_sticker_sale_digest_unchanged(self):
-        # the evaluator name is not part of definition_digest, so existing pins hold
+    def test_the_sticker_sale_definition_digest_pin(self):
+        # the evaluator name is not part of definition_digest, so a rename changes no pin;
+        # this digest is 0.1.1's, where the delivery rows say they rest on the seller's report (#156)
         import deal_pack
         self.assertEqual(deal_pack.definition_digest(terms.load_pack(SOURCE)),
-                         "a1831156589ca58cdb7a7fcd22e2378dd2130ea7c288d22b8ceeaa8a0b75c6e7")
+                         "b863e5e4898fc328acc2d997371aff651ec53bd5d4032a26aeac0b21d047d0a7")
 
     def test_a_second_pack_lints_tests_and_runs_over_the_same_evaluator(self):
         self.assertEqual(call("lint", self.BEANS)[0], 0)

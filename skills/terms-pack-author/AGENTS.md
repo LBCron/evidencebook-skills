@@ -74,20 +74,21 @@ rows and change only the words and the number:
 scope:
   kind: deal
 pack_id: sticker-sale
-pack_version: 0.1.0
+pack_version: 0.1.1
 title: Sticker sale terms
 statement: >-
-  A sticker sale came through when the buyer paid before delivery, the sticker
-  was delivered within a day of payment, and the price was the price offered.
+  A sticker sale came through when the buyer paid before delivery and delivery came
+  within a day of payment, both by the delivery time the seller reports, and the
+  price was the price offered.
 evaluator: transaction
 rows:
   - id: paid_before_delivered
-    statement: The buyer paid before the sticker was delivered.
+    statement: The buyer paid before the sticker was delivered, by the delivery time the seller reports.
     tier: recomputed
     check: paid_before_delivered
     proves: [paid_at, delivered_at]
   - id: delivered_within_days
-    statement: The sticker was delivered within 1 day of payment.
+    statement: By the seller's own report, the sticker was delivered within 1 day of payment.
     tier: recomputed
     check: delivered_within_days(1)
     proves: [paid_at, delivered_at]
@@ -109,7 +110,10 @@ the path of the file you wrote.
 The three checks are all there is: `paid_before_delivered`, `delivered_within_days(N)` (a
 whole number of days, written inside the row) and `price_as_offered`. When the seller
 changes the number, change it in both places: the `statement` and the `check`. Bump
-`pack_version` (0.1.0 to 0.1.1) whenever a row changes, so the two versions can be told apart.
+`pack_version` (0.1.1 to 0.1.2) whenever a row changes, so the two versions can be told apart.
+`delivered_at` is the delivery time the seller reports, not one the buyer confirmed, so keep
+that in the `paid_before_delivered` and `delivered_within_days` statements ("by the delivery time the seller
+reports", "by the seller's own report").
 
 If the seller asks for a term none of the three can say (a rating, "the sticker looked
 like the photo", a refund window), say plainly that these terms cannot check that yet.
