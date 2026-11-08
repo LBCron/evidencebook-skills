@@ -424,6 +424,52 @@ class Negatives(unittest.TestCase):
             self.assertNotRegex(text, r"amount|msat|payment_hash|peer_id|node_id")
 
 
+class PackDigestCited(unittest.TestCase):
+    """capsules-plugin#271: a deal whose records cite another inference-deals
+    digest than the pack this evaluator runs is not judged, and the sealed
+    Result says why."""
+
+    def cite(self, capsules, digest):
+        for c in capsules:
+            m = deals._attestation(c).get(deals.EXCHANGE)
+            if m is not None:
+                m[deals.PACK_DIGEST_MEMBER] = digest
+
+    def test_records_citing_the_packs_own_digest_are_judged_as_before(self):
+        provider = load("provider")
+        before, _ = run(provider)
+        self.cite(provider, compiled()["pack_source_digest"])
+        after, _ = run(provider)
+        self.assertEqual([c["verdict"] for c in after["claims"]], [c["verdict"] for c in before["claims"]])
+        self.assertNotIn("digest_mismatch_deals", after["x-window"])
+
+    def test_records_citing_none_are_judged_as_before(self):
+        doc, _ = run(load("provider"))
+        self.assertNotIn("digest_mismatch_deals", doc["x-window"])
+        self.assertNotIn(deals.MISMATCH, {c.get("x-reason") for c in doc["claims"]})
+
+    def test_a_mismatched_digest_is_not_judged_and_carries_the_reason(self):
+        provider = load("provider")
+        self.cite(provider, "0" * 64)
+        doc, summary = run(provider)
+        rows = doc["claims"]
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual((row["verdict"], row["x-reason"]), ("not_evaluable", deals.MISMATCH))
+            self.assertEqual(row["x-cited-inference-deals-digests"], ["0" * 64])
+            self.assertEqual(row["x-pack-digest"], compiled()["pack_source_digest"])
+        self.assertEqual(doc["x-window"]["digest_mismatch_deals"], doc["x-window"]["deals_counted"])
+        self.assertEqual(summary["states"], {deals.MISMATCH: doc["x-window"]["deals_counted"]})
+
+    def test_one_mismatching_record_is_enough(self):
+        provider = load("provider")
+        self.cite(provider, compiled()["pack_source_digest"])
+        one = next(c for c in provider if deals._attestation(c).get(deals.EXCHANGE) is not None)
+        deals._attestation(one)[deals.EXCHANGE][deals.PACK_DIGEST_MEMBER] = "1" * 64
+        doc, _ = run(provider)
+        self.assertEqual(doc["x-window"]["digest_mismatch_deals"], 1)
+
+
 class ReportShFlags(unittest.TestCase):
     def report_sh(self, *args):
         return subprocess.run(["bash", str(ROOT / "scripts" / "report.sh"), "--profile", "p",
