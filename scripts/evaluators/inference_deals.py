@@ -29,6 +29,14 @@ a0297e0; each book record's payload is one Mesh capsule):
     `adjudication_issued`, or a referee's verdict record's `adjudication`
     block), naming the judged halves by capsule id.
 
+Pack digest (capsules-plugin#271). The Mesh plugin's exchange records cite the
+agreement's `inference_deals_digest` (the pack's `pack_source_digest`). A deal
+whose records cite another digest than the compiled pack this evaluator runs
+is not judged: every row is not_evaluable with `x-reason`
+`inference_deals_digest_mismatch`, naming both digests, counted in
+`x-window.digest_mismatch_deals`. The sealed Result carries that reason, so it
+is signed by whoever seals it. Records citing none are judged as before.
+
 Window. The anchor is the last period boundary (epoch + k * length_s) at or
 before the end of --date. The window is every whole period that ends at or
 before the anchor and starts no earlier than `months` calendar months before
@@ -105,6 +113,11 @@ OBSERVATION = "x-mesh-settlement-v1"
 EXCHANGE = "x-mesh-poc-v1"
 # An exchange record's `role`, as the side of the deal it puts this node on.
 EXCHANGE_ROLES = {"served": "provider", "requested": "payer"}
+
+# The member an exchange record cites its agreement's pack digest in, and the
+# reason a deal that cites another pack is not judged.
+PACK_DIGEST_MEMBER = "inference_deals_digest"
+MISMATCH = "inference_deals_digest_mismatch"
 
 PAID = "come_through.paid_as_agreed"
 SERVED = "come_through.served_as_agreed"
@@ -383,11 +396,30 @@ def _adjudication(deal, own_node):
     return verdict, reading, cited
 
 
-def judge_deal(deal, legs, own_keys):
+def cited_pack_digests(deal):
+    """The inference-deals digests the deal's exchange records cite (the
+    Mesh plugin's `x-mesh-poc-v1.inference_deals_digest`, beside `acceptance`,
+    capsules-plugin#271), sorted. A record that cites none adds none."""
+    return sorted({m[PACK_DIGEST_MEMBER] if isinstance(m[PACK_DIGEST_MEMBER], str) else repr(m[PACK_DIGEST_MEMBER])
+                   for _, _, m in deal.exchanges if PACK_DIGEST_MEMBER in m})
+
+
+def judge_deal(deal, legs, own_keys, pack_digest=None):
     """{criterion: verdict}, {criterion: extras}, {criterion: cited ids}, the
-    deal's state, and its unmatched settlement count."""
+    deal's state, and its unmatched settlement count. A deal whose records
+    cite an inference-deals digest other than `pack_digest` (the pack this
+    evaluator runs) is not judged: every row is not_evaluable with the reason
+    `inference_deals_digest_mismatch`, which the sealed Result then carries."""
     verdicts = {PAID: "out_of_scope", SERVED: "out_of_scope", MODEL: "out_of_scope"}
     extras, cited = {}, {}
+    cites = cited_pack_digests(deal)
+    if pack_digest is not None and any(d != pack_digest for d in cites):
+        for c in verdicts:
+            verdicts[c] = "not_evaluable"
+            extras[c] = {"x-state": MISMATCH, "x-reason": MISMATCH,
+                         "x-cited-inference-deals-digests": cites, "x-pack-digest": pack_digest}
+            cited[c] = [cid for cid, _ in deal.records]
+        return verdicts, extras, cited, MISMATCH, 0
     roles = deal.roles
     if len(roles) != 1 or roles - {"payer", "provider"}:
         # One node is never both sides of one exchange: the records conflict.
@@ -472,7 +504,7 @@ def build_result(records, compiled, date, generated_at, policy=None):
         if cls is None:
             counts["class_missing"] += 1
             counts["class_conflicting"] += int(conflicting)
-        verdicts, extras, cited, state, unmatched = judge_deal(deal, legs, own_keys)
+        verdicts, extras, cited, state, unmatched = judge_deal(deal, legs, own_keys, compiled.get("pack_source_digest"))
         counts["unmatched_settlements"] += unmatched
         counts["adjudicated_deals"] += int((extras.get(MODEL) or {}).get("x-reading") == "adjudicated")
         counts["states"][state] = counts["states"].get(state, 0) + 1
@@ -505,6 +537,8 @@ def build_result(records, compiled, date, generated_at, policy=None):
         "adjudicated_deals": counts["adjudicated_deals"],
         "peer_book": "not_available",
     }
+    if counts["states"].get(MISMATCH):  # absent otherwise, so an unaffected Result is byte-identical
+        doc["x-window"]["digest_mismatch_deals"] = counts["states"][MISMATCH]
     summary = {"contract_ref": compiled["contract_ref"], "window": doc["x-window"], "states": counts["states"]}
     return doc, summary
 
