@@ -435,6 +435,14 @@ class PackDigestCited(unittest.TestCase):
             if m is not None:
                 m[deals.PACK_DIGEST_MEMBER] = digest
 
+    def test_the_packs_digest_is_the_one_the_plugin_pins(self):
+        # Mesh-LLM/capsules-plugin crates/evidence-plugin/src/agreement.rs
+        # INFERENCE_DEALS_DIGEST must equal this value. A pack recompile changes
+        # it: release the plugin with the new constant in the same batch, or
+        # nodes refuse each other's proposals and this judge refuses their deals.
+        self.assertEqual(compiled()["pack_source_digest"],
+                         "d8aa9967ebd346e386b3f27d1fe582902d964d30183e9fa377206b4ccb116a18")
+
     def test_records_citing_the_packs_own_digest_are_judged_as_before(self):
         provider = load("provider")
         before, _ = run(provider)
